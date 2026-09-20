@@ -1,6 +1,6 @@
 package btiface
 
 type IConnManager interface {
-	Add(conn iConnection)
-	Remove(conn iConnection)
+	Add(conn IConnection)
+	Remove(conn IConnection)
 }

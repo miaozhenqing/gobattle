@@ -1,6 +1,6 @@
 package btiface
 
 type IConnection interface {
-	GetID() int
+	GetID() int64
 	StartRead()
 }
