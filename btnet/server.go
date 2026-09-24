@@ -3,35 +3,47 @@ package btnet
 import (
 	"fmt"
 	"gobattle/btiface"
+	utils "gobattle/util"
 	"net"
 	"strconv"
 	"time"
 )
 
 type server struct {
-	Name    string
-	IP      string
-	Port    int
-	ConnMgr btiface.IConnManager
+	name           string
+	ip             string
+	port           int
+	IPVersion      string
+	connMgr        btiface.IConnManager
+	messageHandler btiface.IMessageHandler
 }
 
-func NewServer(IP string, port int) *server {
+func NewServer() *server {
 	s := &server{
-		Name:    "battle",
-		IP:      IP,
-		Port:    port,
-		ConnMgr: NewConnManager(),
+		name:           utils.ServerConfig.Name,
+		ip:             utils.ServerConfig.Host,
+		port:           utils.ServerConfig.TcpPort,
+		IPVersion:      utils.ServerConfig.IPVersion,
+		connMgr:        NewConnManager(),
+		messageHandler: NewMessageHandler(),
 	}
 	return s
 }
+
+func (s *server) SetSerializer(ser btiface.ISerializer) {
+	s.messageHandler.SetSerializer(ser)
+}
+func (s *server) AddRouter(msgId uint32, r btiface.IRouter) {
+	s.messageHandler.AddRouter(msgId, r)
+}
+
 func (s *server) Start() {
 	go func() {
-		var IPVersion = "tcp4"
-		addr, err := net.ResolveTCPAddr(IPVersion, s.IP+":"+strconv.Itoa(s.Port))
+		addr, err := net.ResolveTCPAddr(utils.ServerConfig.IPVersion, s.ip+":"+strconv.Itoa(s.port))
 		if err != nil {
 			panic(err)
 		}
-		listener, err := net.ListenTCP(IPVersion, addr)
+		listener, err := net.ListenTCP(utils.ServerConfig.IPVersion, addr)
 		if err != nil {
 			panic(err)
 		}
@@ -44,11 +56,16 @@ func (s *server) Start() {
 			}
 
 			go func() {
-				connID := time.Now().UnixMilli()
-				connection := NewConnection(connID, tcp)
-				s.ConnMgr.Add(connection)
+				connID := generalConnID()
+				connection := NewConnection(connID, tcp, s.messageHandler)
+				s.connMgr.Add(connection)
 				connection.Start()
 			}()
 		}
 	}()
+}
+
+func generalConnID() int64 {
+	connID := time.Now().UnixMilli()
+	return connID
 }

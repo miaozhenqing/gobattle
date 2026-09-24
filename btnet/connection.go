@@ -2,31 +2,39 @@ package btnet
 
 import (
 	"fmt"
+	"gobattle/btiface"
+	utils "gobattle/util"
 	"net"
 )
 
 type Connection struct {
-	ID           int64
-	conn         *net.TCPConn
-	ExitBuffChan chan bool
-	isClosed     bool
+	id             int64
+	conn           *net.TCPConn
+	exitBuffChan   chan bool
+	isClosed       bool
+	messageHandler btiface.IMessageHandler
+	msgChan        chan []byte
+	frameDecoder   btiface.IFrameDecoder
 }
 
-func NewConnection(id int64, conn *net.TCPConn) *Connection {
+func NewConnection(id int64, conn *net.TCPConn, messageHandler btiface.IMessageHandler) *Connection {
 	return &Connection{
-		ID:           id,
-		conn:         conn,
-		ExitBuffChan: make(chan bool),
+		id:             id,
+		conn:           conn,
+		exitBuffChan:   make(chan bool),
+		messageHandler: messageHandler,
+		msgChan:        make(chan []byte),
+		frameDecoder:   NewFrameDecoder(),
 	}
 }
 
 func (c *Connection) GetID() int64 {
-	return c.ID
+	return c.id
 }
 func (c *Connection) Start() {
-	go c.StartRead()
-	go c.StartWrite()
-	<-c.ExitBuffChan
+	go c.startRead()
+	go c.startWrite()
+	<-c.exitBuffChan
 }
 func (c *Connection) Stop() {
 	if c.isClosed {
@@ -34,26 +42,56 @@ func (c *Connection) Stop() {
 	}
 	c.conn.Close()
 	c.isClosed = true
-	c.ExitBuffChan <- true
-	close(c.ExitBuffChan)
+	c.exitBuffChan <- true
+	close(c.exitBuffChan)
 }
-func (c *Connection) StartRead() {
+
+func (c *Connection) SendMsg(msgId int32, bytes []byte) {
+	if c.isClosed {
+		return
+	}
+	c.msgChan <- bytes
+}
+func (c *Connection) startRead() {
 	defer c.Stop()
+	buf := make([]byte, utils.ServerConfig.IOReadBuffSize)
+
 	for {
 		if c.isClosed {
 			return
 		}
-		//创建数组
-		buf := make([]byte, 1024)
 		//读取数据到数组
-		_, err := c.conn.Read(buf)
+		size, err := c.conn.Read(buf)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("read error:", err)
+			return
+		}
+		if size == 0 {
 			continue
 		}
+		//解包
+		packets, err := c.frameDecoder.Decode(buf[:size])
+		if err != nil {
+			fmt.Println("decode error:", err)
+			return
+		}
+		if len(packets) == 0 {
+			fmt.Println("decode no packet")
+		}
 		//解码
+		for _, packet := range packets {
+			req := NewRequest(c, packet)
+			go c.messageHandler.HandleMessage(req)
+		}
 	}
 }
-func (c *Connection) StartWrite() {
-
+func (c *Connection) startWrite() {
+	for {
+		select {
+		case data := <-c.msgChan:
+			c.conn.Write(data)
+		case <-c.exitBuffChan:
+			return
+		}
+	}
 }

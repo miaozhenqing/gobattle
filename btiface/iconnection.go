@@ -2,5 +2,5 @@ package btiface
 
 type IConnection interface {
 	GetID() int64
-	StartRead()
+	SendMsg(msgId int32, msg []byte)
 }
