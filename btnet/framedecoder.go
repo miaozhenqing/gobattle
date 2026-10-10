@@ -4,8 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
-	utils "gobattle/util"
+	utils "gobattle/config"
 )
 
 /*

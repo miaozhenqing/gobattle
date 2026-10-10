@@ -1,9 +1,9 @@
 package btnet
 
 import (
-	"fmt"
 	"gobattle/btiface"
-	utils "gobattle/util"
+	"gobattle/btlog"
+	"gobattle/config"
 	"net"
 	"strconv"
 	"time"
@@ -20,10 +20,10 @@ type server struct {
 
 func NewServer() *server {
 	s := &server{
-		name:           utils.ServerConfig.Name,
-		ip:             utils.ServerConfig.Host,
-		port:           utils.ServerConfig.TcpPort,
-		IPVersion:      utils.ServerConfig.IPVersion,
+		name:           config.ServerConfig.Name,
+		ip:             config.ServerConfig.Host,
+		port:           config.ServerConfig.TcpPort,
+		IPVersion:      config.ServerConfig.IPVersion,
 		connMgr:        NewConnManager(),
 		messageHandler: NewMessageHandler(),
 	}
@@ -38,26 +38,34 @@ func (s *server) AddRouter(msgId uint32, r btiface.IRouter) {
 }
 
 func (s *server) Start() {
+	addr, err := net.ResolveTCPAddr(config.ServerConfig.IPVersion, s.ip+":"+strconv.Itoa(s.port))
+	if err != nil {
+		panic(err)
+	}
 	go func() {
-		addr, err := net.ResolveTCPAddr(utils.ServerConfig.IPVersion, s.ip+":"+strconv.Itoa(s.port))
-		if err != nil {
-			panic(err)
-		}
-		listener, err := net.ListenTCP(utils.ServerConfig.IPVersion, addr)
+
+		listener, err := net.ListenTCP(config.ServerConfig.IPVersion, addr)
 		if err != nil {
 			panic(err)
 		}
 
 		for {
+			if s.connMgr.Len() > int(config.ServerConfig.MaxConn) {
+				//todo 先暴力sleep
+				time.Sleep(1000 * time.Millisecond)
+				btlog.Ins().Warn("over max conn")
+				continue
+			}
+
 			tcp, err := listener.AcceptTCP()
 			if err != nil {
-				fmt.Println(err)
+				btlog.Ins().Errorf("accept tcp error:%v", err)
 				continue
 			}
 
 			go func() {
 				connID := generalConnID()
-				connection := NewConnection(connID, tcp, s.messageHandler)
+				connection := NewConnection(connID, tcp, s.messageHandler, s.connMgr)
 				s.connMgr.Add(connection)
 				connection.Start()
 			}()
@@ -66,6 +74,7 @@ func (s *server) Start() {
 }
 
 func generalConnID() int64 {
-	connID := time.Now().UnixMilli()
+	//todo 暂时使用时间戳
+	connID := time.Now().UnixNano()
 	return connID
 }

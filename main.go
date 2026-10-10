@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"gobattle/btnet"
+	"gobattle/config"
 	"gobattle/router"
 	utils "gobattle/util"
 	"net"
@@ -30,7 +31,7 @@ func NewClient() *Client {
 	return &Client{}
 }
 func (c *Client) Test() {
-	resolveTCPAddr, _ := net.ResolveTCPAddr("tcp", utils.ServerConfig.Host+":"+strconv.Itoa(utils.ServerConfig.TcpPort))
+	resolveTCPAddr, _ := net.ResolveTCPAddr("tcp", config.ServerConfig.Host+":"+strconv.Itoa(config.ServerConfig.TcpPort))
 
 	conn, err := net.DialTCP("tcp", nil, resolveTCPAddr)
 	if err != nil {
