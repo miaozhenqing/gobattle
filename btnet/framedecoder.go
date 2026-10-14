@@ -1,7 +1,6 @@
 package btnet
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	utils "gobattle/config"
@@ -13,8 +12,6 @@ import (
 │ 4 byte │ 4 byte   │ dataLen byte │
 └────────┴──────────┴──────────────┘
 */
-
-const HeaderSize = 8
 
 var (
 	MaxFrameSize     = utils.ServerConfig.MaxPacketSize
@@ -40,14 +37,18 @@ func (d *FrameDecoder) Decode(b []byte) ([][]byte, error) {
 
 	for {
 		// Header都不够
-		if len(d.buffer) < HeaderSize {
+		if len(d.buffer) < headerSize {
 			break
 		}
 
-		dataLen := binary.BigEndian.Uint32(d.buffer[4:8])
+		header, err := decodeFrameHeader(d.buffer)
+		if err != nil {
+			return nil, err
+		}
+		dataLen := header.DataLen
 
 		// 校验长度
-		if uint64(HeaderSize)+uint64(dataLen) > uint64(MaxFrameSize) {
+		if uint64(headerSize)+uint64(dataLen) > uint64(MaxFrameSize) {
 			return nil, fmt.Errorf(
 				"%w: dataLen=%d, maxFrameSize=%d",
 				ErrFrameTooLarge,
@@ -57,7 +58,7 @@ func (d *FrameDecoder) Decode(b []byte) ([][]byte, error) {
 		}
 
 		// 完整帧长度
-		totalLen := HeaderSize + int(dataLen)
+		totalLen := headerSize + int(dataLen)
 
 		// data 还没收完整
 		if len(d.buffer) < totalLen {

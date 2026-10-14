@@ -1,7 +1,7 @@
 package btnet
 
 import (
-	"encoding/binary"
+	"fmt"
 	"gobattle/btiface"
 )
 
@@ -12,22 +12,29 @@ func NewSerializer() *Serializer {
 	return &Serializer{}
 }
 
-func (s Serializer) Serialize(msg btiface.IMessage) []byte {
-	b := make([]byte, 8+msg.GetDataLen())
-	binary.BigEndian.PutUint32(b[0:4], msg.GetMsgId())
-	binary.BigEndian.PutUint32(b[4:8], msg.GetDataLen())
-	copy(b[8:], msg.GetData())
-	return b
+func (s *Serializer) Serialize(msg btiface.IMessage) []byte {
+	header, err := encodeFrameHeader(frameHeader{
+		MessageID: msg.GetMsgId(),
+		DataLen:   msg.GetDataLen(),
+	})
+	if err != nil {
+		return nil
+	}
+	return append(header, msg.GetData()...)
 }
 
-func (s Serializer) Deserialize(bytes []byte) (btiface.IMessage, error) {
-	msgId := binary.BigEndian.Uint32(bytes[0:4])
-	dataLen := binary.BigEndian.Uint32(bytes[4:8])
-	payload := make([]byte, dataLen)
-	copy(payload, bytes[8:])
+func (s *Serializer) Deserialize(data []byte) (btiface.IMessage, error) {
+	header, err := decodeFrameHeader(data)
+	if err != nil {
+		return nil, err
+	}
+	if uint64(headerSize)+uint64(header.DataLen) > uint64(MaxFrameSize) {
+		return nil, fmt.Errorf("%w: dataLen=%d", ErrFrameTooLarge, header.DataLen)
+	}
+	if uint64(len(data)) != uint64(headerSize)+uint64(header.DataLen) {
+		return nil, fmt.Errorf("frame length mismatch: declared=%d, actual=%d", header.DataLen, len(data)-headerSize)
+	}
 
-	return &Message{
-		msgId: msgId,
-		data:  payload,
-	}, nil
+	payload := append([]byte(nil), data[headerSize:]...)
+	return &Message{msgId: header.MessageID, data: payload}, nil
 }

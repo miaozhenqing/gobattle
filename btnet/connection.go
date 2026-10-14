@@ -58,6 +58,7 @@ func (c *Connection) destroy() {
 }
 
 func (c *Connection) SendMsg(msgId int32, bytes []byte) {
+	//todo 封包
 	c.msgChan <- bytes
 }
 func (c *Connection) startRead() {
@@ -91,7 +92,8 @@ func (c *Connection) startRead() {
 			//解码
 			for _, packet := range packets {
 				req := GetRequest(c, packet)
-				go c.messageHandler.HandleMessage(req)
+				//这里只往通道放消息，阻塞了起到背压作用
+				c.messageHandler.HandleMessage(req)
 			}
 		}
 

@@ -1,0 +1,48 @@
+package btnet
+
+import (
+	"gobattle/btiface"
+)
+
+type Pipeline struct {
+	conn btiface.IConnection
+	head *HandlerContext
+	tail *HandlerContext
+}
+
+func NewPipeline(conn btiface.IConnection) *Pipeline {
+	p := &Pipeline{conn: conn}
+	h := &dummyHandlerContext{}
+	t := &dummyHandlerContext{}
+
+	p.head = NewHandlerContext(p, h)
+	p.tail = NewHandlerContext(p, t)
+
+	p.head.next = p.tail
+	p.tail.prev = p.head
+	return p
+}
+
+func (p *Pipeline) AddLast(name string, h interface{}) btiface.IPipeline {
+	ctx := NewHandlerContext(p, h)
+	prev := p.tail.prev
+	prev.next = ctx
+	ctx.prev = prev
+	ctx.next = p.tail
+	p.tail.prev = ctx
+	return p
+}
+
+func (p *Pipeline) FireRead(msg interface{}) {
+	p.head.FireRead(msg)
+}
+
+func (p *Pipeline) FireWrite(msg interface{}) {
+	p.tail.FireWrite(msg)
+}
+
+func (p *Pipeline) GetConnection() btiface.IConnection {
+	return p.conn
+}
+
+type dummyHandlerContext struct{}

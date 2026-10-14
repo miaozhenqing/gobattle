@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"gobattle/btnet"
 	"gobattle/config"
@@ -41,10 +40,7 @@ func (c *Client) Test() {
 		s := "hello world"
 		message := btnet.NewMessage(uint32(utils.MessageIDLogin), []byte(s))
 
-		buf := make([]byte, 8+message.GetDataLen())
-		binary.BigEndian.PutUint32(buf[0:4], message.GetMsgId())
-		binary.BigEndian.PutUint32(buf[4:8], message.GetDataLen())
-		copy(buf[8:], message.GetData())
+		buf := btnet.NewSerializer().Serialize(message)
 
 		conn.Write(buf)
 
