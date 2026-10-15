@@ -14,9 +14,9 @@ import (
 )
 
 func main() {
-	s := btnet.NewServer()
+	s := btnet.NewServer(serverOptions())
 
-	serializer := btnet.NewSerializer()
+	serializer := btnet.NewSerializer(config.ServerConfig.MaxPacketSize)
 
 	dispatcher := handler.NewDispatchHandler()
 	dispatcher.AddRouter(1001, router.NewPingRouter())
@@ -35,6 +35,23 @@ func main() {
 	client.Test()
 }
 
+func serverOptions() btnet.Options {
+	cfg := config.ServerConfig
+	opts := btnet.DefaultOptions()
+	opts.Name = cfg.Name
+	opts.Host = cfg.Host
+	opts.TcpPort = cfg.TcpPort
+	opts.IPVersion = cfg.IPVersion
+	opts.MaxPacketSize = cfg.MaxPacketSize
+	opts.MaxConn = cfg.MaxConn
+	opts.WorkerPoolSize = cfg.WorkerPoolSize
+	opts.WorkerPoolQueueSize = cfg.WorkerPoolQueueSize
+	opts.IOReadBuffSize = cfg.IOReadBuffSize
+	opts.WriteTimeout = cfg.WriteTimeout
+	opts.SendQueueSize = cfg.SendQueueSize
+	return opts
+}
+
 type Client struct {
 }
 
@@ -48,7 +65,7 @@ func (c *Client) Test() {
 	if err != nil {
 		panic(err)
 	}
-	serializer := btnet.NewSerializer()
+	serializer := btnet.NewSerializer(config.ServerConfig.MaxPacketSize)
 	for {
 		s := "hello world"
 		message := btnet.NewMessage(uint32(utils.MessageIDLogin), []byte(s))

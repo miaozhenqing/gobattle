@@ -4,7 +4,6 @@ import (
 	"errors"
 	"gobattle/btiface"
 	"gobattle/btlog"
-	"gobattle/config"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -12,24 +11,18 @@ import (
 )
 
 type server struct {
-	name           string
-	ip             string
-	port           int
-	IPVersion      string
+	opts           Options
 	connMgr        btiface.IConnManager
 	messageHandler btiface.IMessageHandler
 	initializer    btiface.PipelineInitializer
 	listener       *net.TCPListener
 }
 
-func NewServer() *server {
+func NewServer(opts Options) *server {
 	s := &server{
-		name:           config.ServerConfig.Name,
-		ip:             config.ServerConfig.Host,
-		port:           config.ServerConfig.TcpPort,
-		IPVersion:      config.ServerConfig.IPVersion,
+		opts:           opts,
 		connMgr:        NewConnManager(),
-		messageHandler: NewMessageHandler(),
+		messageHandler: NewMessageHandler(opts.WorkerPoolSize, opts.WorkerPoolQueueSize),
 	}
 	return s
 }
@@ -49,12 +42,12 @@ func (s *server) Start() error {
 	if s.initializer == nil {
 		return errors.New("pipeline initializer not set")
 	}
-	addr, err := net.ResolveTCPAddr(s.IPVersion, s.ip+":"+strconv.Itoa(s.port))
+	addr, err := net.ResolveTCPAddr(s.opts.IPVersion, s.opts.Host+":"+strconv.Itoa(s.opts.TcpPort))
 	if err != nil {
 		return err
 	}
 
-	listener, err := net.ListenTCP(s.IPVersion, addr)
+	listener, err := net.ListenTCP(s.opts.IPVersion, addr)
 	if err != nil {
 		return err
 	}
@@ -71,7 +64,7 @@ var (
 func (s *server) acceptLoop() {
 	var delay time.Duration
 	for {
-		if s.connMgr.Len() >= int(config.ServerConfig.MaxConn) {
+		if s.connMgr.Len() >= int(s.opts.MaxConn) {
 			//todo 先暴力sleep
 			time.Sleep(1000 * time.Millisecond)
 			btlog.Ins().Warn("over max conn")
@@ -100,7 +93,7 @@ func (s *server) acceptLoop() {
 
 		go func() {
 			connID := generalConnID()
-			connection := NewConnection(connID, tcp, s.messageHandler, s.connMgr, s.initializer)
+			connection := NewConnection(connID, tcp, &s.opts, s.messageHandler, s.connMgr, s.initializer)
 			s.connMgr.Add(connection)
 			connection.Start()
 		}()

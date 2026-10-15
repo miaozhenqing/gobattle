@@ -5,7 +5,6 @@ import (
 	"errors"
 	"gobattle/btiface"
 	"gobattle/btlog"
-	"gobattle/config"
 	"net"
 	"time"
 )
@@ -13,6 +12,7 @@ import (
 type Connection struct {
 	id             int64
 	conn           *net.TCPConn
+	opts           *Options
 	messageHandler btiface.IMessageHandler
 	msgChan        chan []byte
 	frameDecoder   btiface.IFrameDecoder
@@ -24,13 +24,14 @@ type Connection struct {
 	workerID int
 }
 
-func NewConnection(id int64, conn *net.TCPConn, messageHandler btiface.IMessageHandler, connMgr btiface.IConnManager, initializer btiface.PipelineInitializer) *Connection {
+func NewConnection(id int64, conn *net.TCPConn, opts *Options, messageHandler btiface.IMessageHandler, connMgr btiface.IConnManager, initializer btiface.PipelineInitializer) *Connection {
 	c := &Connection{
 		id:             id,
 		conn:           conn,
+		opts:           opts,
 		messageHandler: messageHandler,
-		msgChan:        make(chan []byte, config.ServerConfig.SendQueueSize),
-		frameDecoder:   NewFrameDecoder(),
+		msgChan:        make(chan []byte, opts.SendQueueSize),
+		frameDecoder:   NewFrameDecoder(opts.MaxPacketSize, opts.IOReadBuffSize),
 		connMgr:        connMgr,
 
 		workerID: messageHandler.AllocateWorkerID(id),
@@ -81,7 +82,7 @@ func (c *Connection) writeRaw(data []byte) {
 
 func (c *Connection) startRead() {
 	defer c.Stop()
-	buf := make([]byte, config.ServerConfig.IOReadBuffSize)
+	buf := make([]byte, c.opts.IOReadBuffSize)
 
 	for {
 		select {
@@ -132,7 +133,7 @@ func (c *Connection) startWrite() {
 }
 
 func (c *Connection) write(data []byte) error {
-	if timeout := config.ServerConfig.WriteTimeout; timeout > 0 {
+	if timeout := c.opts.WriteTimeout; timeout > 0 {
 		if err := c.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
 			btlog.Ins().Errorf("set write deadline error, connID:%v, err:%v", c.GetID(), err)
 			return err

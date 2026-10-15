@@ -3,7 +3,6 @@ package btnet
 import (
 	"gobattle/btiface"
 	"gobattle/btlog"
-	"gobattle/config"
 	"runtime/debug"
 )
 
@@ -18,11 +17,11 @@ type MessageHandler struct {
 	workerQueues        []chan requestTask
 }
 
-func NewMessageHandler() *MessageHandler {
+func NewMessageHandler(workerPoolSize, workerPoolQueueSize uint32) *MessageHandler {
 	m := &MessageHandler{
-		workerPoolSize:      config.ServerConfig.WorkerPoolSize,
-		workerPoolQueueSize: config.ServerConfig.WorkerPoolQueueSize,
-		workerQueues:        make([]chan requestTask, config.ServerConfig.WorkerPoolSize),
+		workerPoolSize:      workerPoolSize,
+		workerPoolQueueSize: workerPoolQueueSize,
+		workerQueues:        make([]chan requestTask, workerPoolSize),
 	}
 	m.StartWorkPool()
 	return m

@@ -6,10 +6,11 @@ import (
 )
 
 type Serializer struct {
+	maxFrameSize uint32
 }
 
-func NewSerializer() *Serializer {
-	return &Serializer{}
+func NewSerializer(maxFrameSize uint32) *Serializer {
+	return &Serializer{maxFrameSize: maxFrameSize}
 }
 
 func (s *Serializer) Serialize(msg btiface.IMessage) []byte {
@@ -28,7 +29,7 @@ func (s *Serializer) Deserialize(data []byte) (btiface.IMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if uint64(headerSize)+uint64(header.DataLen) > uint64(MaxFrameSize) {
+	if uint64(headerSize)+uint64(header.DataLen) > uint64(s.maxFrameSize) {
 		return nil, fmt.Errorf("%w: dataLen=%d", ErrFrameTooLarge, header.DataLen)
 	}
 	if uint64(len(data)) != uint64(headerSize)+uint64(header.DataLen) {

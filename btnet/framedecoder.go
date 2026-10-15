@@ -3,7 +3,6 @@ package btnet
 import (
 	"errors"
 	"fmt"
-	utils "gobattle/config"
 )
 
 /*
@@ -13,17 +12,18 @@ import (
 └────────┴──────────┴──────────────┘
 */
 
-var (
-	MaxFrameSize     = utils.ServerConfig.MaxPacketSize
-	ErrFrameTooLarge = errors.New("frame too large")
-)
+var ErrFrameTooLarge = errors.New("frame too large")
 
 type FrameDecoder struct {
-	buffer []byte
+	maxFrameSize uint32
+	buffer       []byte
 }
 
-func NewFrameDecoder() *FrameDecoder {
-	return &FrameDecoder{buffer: make([]byte, 0, utils.ServerConfig.IOReadBuffSize)}
+func NewFrameDecoder(maxFrameSize, initBufSize uint32) *FrameDecoder {
+	return &FrameDecoder{
+		maxFrameSize: maxFrameSize,
+		buffer:       make([]byte, 0, initBufSize),
+	}
 }
 
 func (d *FrameDecoder) Decode(b []byte) ([][]byte, error) {
@@ -48,12 +48,12 @@ func (d *FrameDecoder) Decode(b []byte) ([][]byte, error) {
 		dataLen := header.DataLen
 
 		// 校验长度
-		if uint64(headerSize)+uint64(dataLen) > uint64(MaxFrameSize) {
+		if uint64(headerSize)+uint64(dataLen) > uint64(d.maxFrameSize) {
 			return nil, fmt.Errorf(
 				"%w: dataLen=%d, maxFrameSize=%d",
 				ErrFrameTooLarge,
 				dataLen,
-				MaxFrameSize,
+				d.maxFrameSize,
 			)
 		}
 
