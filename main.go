@@ -27,7 +27,10 @@ func main() {
 		p.AddLast(handler.NewEncodeHandler(serializer))
 	})
 
-	s.Start()
+	err := s.Start()
+	if err != nil {
+		panic("server start error")
+	}
 	client := NewClient()
 	client.Test()
 }
@@ -59,7 +62,7 @@ func (c *Client) Test() {
 
 		n, err := conn.Read(response)
 		if err != nil {
-			btlog.Ins().Errorf("read error:", err)
+			btlog.Ins().Errorf("read error:%v", err)
 			return
 		}
 		deserialize, err := serializer.Deserialize(response[:n])

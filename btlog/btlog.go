@@ -2,50 +2,57 @@ package btlog
 
 import (
 	"fmt"
+	"log/slog"
+	"os"
 	"sync"
 )
 
 var ins *btLog
 var once sync.Once
 
+type btLog struct {
+	logger *slog.Logger
+}
+
 func Ins() *btLog {
 	once.Do(func() {
-		ins = &btLog{}
+		ins = &btLog{
+			logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			})),
+		}
 	})
 	return ins
 }
 
-// todo 先直接打印
-type btLog struct{}
-
-func (btLog) Debug(v ...interface{}) {
-	fmt.Println(v)
+func (b *btLog) Debug(v ...interface{}) {
+	b.logger.Debug(fmt.Sprint(v...))
 }
 
-func (btLog) Info(v ...interface{}) {
-	fmt.Println(v)
+func (b *btLog) Info(v ...interface{}) {
+	b.logger.Info(fmt.Sprint(v...))
 }
 
-func (btLog) Warn(v ...interface{}) {
-	fmt.Println(v)
+func (b *btLog) Warn(v ...interface{}) {
+	b.logger.Warn(fmt.Sprint(v...))
 }
 
-func (btLog) Error(v ...interface{}) {
-	fmt.Println(v)
+func (b *btLog) Error(v ...interface{}) {
+	b.logger.Error(fmt.Sprint(v...))
 }
 
-func (btLog) Debugf(format string, v ...interface{}) {
-	fmt.Println(format, v)
+func (b *btLog) Debugf(format string, v ...interface{}) {
+	b.logger.Debug(fmt.Sprintf(format, v...))
 }
 
-func (btLog) Infof(format string, v ...interface{}) {
-	fmt.Println(format, v)
+func (b *btLog) Infof(format string, v ...interface{}) {
+	b.logger.Info(fmt.Sprintf(format, v...))
 }
 
-func (btLog) Warnf(format string, v ...interface{}) {
-	fmt.Println(format, v)
+func (b *btLog) Warnf(format string, v ...interface{}) {
+	b.logger.Warn(fmt.Sprintf(format, v...))
 }
 
-func (btLog) Errorf(format string, v ...interface{}) {
-	fmt.Println(format, v)
+func (b *btLog) Errorf(format string, v ...interface{}) {
+	b.logger.Error(fmt.Sprintf(format, v...))
 }

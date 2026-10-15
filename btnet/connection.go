@@ -2,10 +2,12 @@ package btnet
 
 import (
 	"context"
+	"errors"
 	"gobattle/btiface"
 	"gobattle/btlog"
 	"gobattle/config"
 	"net"
+	"time"
 )
 
 type Connection struct {
@@ -27,12 +29,13 @@ func NewConnection(id int64, conn *net.TCPConn, messageHandler btiface.IMessageH
 		id:             id,
 		conn:           conn,
 		messageHandler: messageHandler,
-		msgChan:        make(chan []byte),
+		msgChan:        make(chan []byte, config.ServerConfig.SendQueueSize),
 		frameDecoder:   NewFrameDecoder(),
 		connMgr:        connMgr,
 
 		workerID: messageHandler.AllocateWorkerID(id),
 	}
+	c.cancelCtx, c.cancelFunc = context.WithCancel(context.Background())
 	p := NewPipeline(c)
 	initializer(p)
 	c.pipeline = p
@@ -43,7 +46,7 @@ func (c *Connection) GetID() int64 {
 	return c.id
 }
 func (c *Connection) Start() {
-	c.cancelCtx, c.cancelFunc = context.WithCancel(context.Background())
+
 	go c.startRead()
 	go c.startWrite()
 
@@ -70,6 +73,9 @@ func (c *Connection) writeRaw(data []byte) {
 	select {
 	case c.msgChan <- data:
 	case <-c.cancelCtx.Done():
+	default:
+		btlog.Ins().Errorf("send queue full, connID:%v", c.GetID())
+		c.Stop()
 	}
 }
 
@@ -111,15 +117,37 @@ func (c *Connection) startRead() {
 	}
 }
 func (c *Connection) startWrite() {
+	defer c.Stop()
 	for {
 		select {
 		case data := <-c.msgChan:
-			c.conn.Write(data)
+			if err := c.write(data); err != nil {
+				return
+			}
 		case <-c.cancelCtx.Done():
-			btlog.Ins().Info("write done")
+			btlog.Ins().Infof("write done, connID:%v", c.GetID())
 			return
 		}
 	}
+}
+
+func (c *Connection) write(data []byte) error {
+	if timeout := config.ServerConfig.WriteTimeout; timeout > 0 {
+		if err := c.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+			btlog.Ins().Errorf("set write deadline error, connID:%v, err:%v", c.GetID(), err)
+			return err
+		}
+	}
+	if _, err := c.conn.Write(data); err != nil {
+		var ne net.Error
+		if errors.As(err, &ne) && ne.Timeout() {
+			btlog.Ins().Errorf("write timeout, connID:%v", c.GetID())
+		} else {
+			btlog.Ins().Errorf("write error, connID:%v, error:%v", c.GetID(), err)
+		}
+		return err
+	}
+	return nil
 }
 
 func (c *Connection) GetWorkerID() int {

@@ -5,4 +5,5 @@ type IConnection interface {
 	SendMsg(msgId int32, msg []byte)
 	GetWorkerID() int
 	GetPipeline() IPipeline
+	Stop()
 }

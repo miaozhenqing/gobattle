@@ -31,3 +31,11 @@ func (cm *ConnManager) Len() int {
 	defer cm.mu.RUnlock()
 	return len(cm.connections)
 }
+
+func (cm *ConnManager) CloseAll() {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	for _, connection := range cm.connections {
+		connection.Stop()
+	}
+}
