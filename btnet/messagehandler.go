@@ -1,78 +1,67 @@
 package btnet
 
 import (
-	"fmt"
 	"gobattle/btiface"
 	"gobattle/btlog"
 	"gobattle/config"
+	"runtime/debug"
 )
 
-type MessageHandler struct {
-	serializer btiface.ISerializer
-	apis       map[uint32]btiface.IRouter
+type requestTask struct {
+	conn  btiface.IConnection
+	frame []byte
+}
 
+type MessageHandler struct {
 	workerPoolSize      uint32
 	workerPoolQueueSize uint32
-	workerQueues        []chan btiface.IRequest
+	workerQueues        []chan requestTask
 }
 
 func NewMessageHandler() *MessageHandler {
 	m := &MessageHandler{
-		apis:                make(map[uint32]btiface.IRouter),
 		workerPoolSize:      config.ServerConfig.WorkerPoolSize,
 		workerPoolQueueSize: config.ServerConfig.WorkerPoolQueueSize,
-		workerQueues:        make([]chan btiface.IRequest, config.ServerConfig.WorkerPoolSize),
+		workerQueues:        make([]chan requestTask, config.ServerConfig.WorkerPoolSize),
 	}
 	m.StartWorkPool()
 	return m
 }
 
-func (mh *MessageHandler) SetSerializer(s btiface.ISerializer) {
-	mh.serializer = s
+func (mh *MessageHandler) HandleMessage(conn btiface.IConnection, frame []byte) {
+	mh.workerQueues[conn.GetWorkerID()] <- requestTask{conn: conn, frame: frame}
 }
 
-func (mh *MessageHandler) AddRouter(msgId uint32, r btiface.IRouter) {
-	mh.apis[msgId] = r
-}
+func (mh *MessageHandler) doHandleMessage(task requestTask) {
+	defer func() {
+		if r := recover(); r != nil {
+			btlog.Ins().Errorf("worker panic, connID:%v err:%v\n%s", task.conn.GetID(), r, debug.Stack())
+		}
+	}()
 
-func (mh *MessageHandler) HandleMessage(request btiface.IRequest) {
-
-	workerQueue := mh.workerQueues[request.GetConnection().GetWorkerID()]
-	workerQueue <- request
-}
-
-func (mh *MessageHandler) doHandleMessage(request btiface.IRequest) {
-	var data = request.GetData()
-	// 反序列化
-	msg, _ := mh.serializer.Deserialize(data)
-
-	// 处理消息
-	router := mh.apis[msg.GetMsgId()]
-	if router == nil {
-		fmt.Printf("error msgId:%s", msg.GetMsgId())
+	p := task.conn.GetPipeline()
+	if p == nil {
+		btlog.Ins().Errorf("pipeline is nil, connID:%v", task.conn.GetID())
 		return
 	}
-
-	request.HandleRouter(router)
-
-	PutRequest(request)
+	p.FireRead(task.frame)
 }
 
 func (mh *MessageHandler) StartWorkPool() {
 	for i := 0; i < int(mh.workerPoolSize); i++ {
-		mh.workerQueues[i] = make(chan btiface.IRequest, mh.workerPoolQueueSize)
+		mh.workerQueues[i] = make(chan requestTask, mh.workerPoolQueueSize)
 		go mh.startWorker(i, mh.workerQueues[i])
 	}
 }
 
-func (mh *MessageHandler) startWorker(i int, requestChan chan btiface.IRequest) {
+func (mh *MessageHandler) startWorker(i int, taskChan chan requestTask) {
 	for {
 		select {
-		case req, ok := <-requestChan:
+		case task, ok := <-taskChan:
 			if ok {
-				mh.doHandleMessage(req)
+				mh.doHandleMessage(task)
 			} else {
-				btlog.Ins().Warnf("requestChan closed:%v", i)
+				btlog.Ins().Warnf("taskChan closed:%v", i)
 				return
 			}
 		}

@@ -16,6 +16,7 @@ type server struct {
 	IPVersion      string
 	connMgr        btiface.IConnManager
 	messageHandler btiface.IMessageHandler
+	initializer    btiface.PipelineInitializer
 }
 
 func NewServer() *server {
@@ -30,14 +31,14 @@ func NewServer() *server {
 	return s
 }
 
-func (s *server) SetSerializer(ser btiface.ISerializer) {
-	s.messageHandler.SetSerializer(ser)
-}
-func (s *server) AddRouter(msgId uint32, r btiface.IRouter) {
-	s.messageHandler.AddRouter(msgId, r)
+func (s *server) SetPipelineInitializer(fn btiface.PipelineInitializer) {
+	s.initializer = fn
 }
 
 func (s *server) Start() {
+	if s.initializer == nil {
+		panic("pipeline initializer not set")
+	}
 	addr, err := net.ResolveTCPAddr(config.ServerConfig.IPVersion, s.ip+":"+strconv.Itoa(s.port))
 	if err != nil {
 		panic(err)
@@ -65,7 +66,7 @@ func (s *server) Start() {
 
 			go func() {
 				connID := generalConnID()
-				connection := NewConnection(connID, tcp, s.messageHandler, s.connMgr)
+				connection := NewConnection(connID, tcp, s.messageHandler, s.connMgr, s.initializer)
 				s.connMgr.Add(connection)
 				connection.Start()
 			}()

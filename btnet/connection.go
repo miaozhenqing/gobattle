@@ -17,12 +17,13 @@ type Connection struct {
 	connMgr        btiface.IConnManager
 	cancelCtx      context.Context
 	cancelFunc     context.CancelFunc
+	pipeline       btiface.IPipeline
 
 	workerID int
 }
 
-func NewConnection(id int64, conn *net.TCPConn, messageHandler btiface.IMessageHandler, connMgr btiface.IConnManager) *Connection {
-	return &Connection{
+func NewConnection(id int64, conn *net.TCPConn, messageHandler btiface.IMessageHandler, connMgr btiface.IConnManager, initializer btiface.PipelineInitializer) *Connection {
+	c := &Connection{
 		id:             id,
 		conn:           conn,
 		messageHandler: messageHandler,
@@ -32,6 +33,10 @@ func NewConnection(id int64, conn *net.TCPConn, messageHandler btiface.IMessageH
 
 		workerID: messageHandler.AllocateWorkerID(id),
 	}
+	p := NewPipeline(c)
+	initializer(p)
+	c.pipeline = p
+	return c
 }
 
 func (c *Connection) GetID() int64 {
@@ -58,9 +63,16 @@ func (c *Connection) destroy() {
 }
 
 func (c *Connection) SendMsg(msgId int32, bytes []byte) {
-	//todo 封包
-	c.msgChan <- bytes
+	c.pipeline.FireWrite(NewMessage(uint32(msgId), bytes))
 }
+
+func (c *Connection) writeRaw(data []byte) {
+	select {
+	case c.msgChan <- data:
+	case <-c.cancelCtx.Done():
+	}
+}
+
 func (c *Connection) startRead() {
 	defer c.Stop()
 	buf := make([]byte, config.ServerConfig.IOReadBuffSize)
@@ -91,9 +103,8 @@ func (c *Connection) startRead() {
 			}
 			//解码
 			for _, packet := range packets {
-				req := GetRequest(c, packet)
 				//这里只往通道放消息，阻塞了起到背压作用
-				c.messageHandler.HandleMessage(req)
+				c.messageHandler.HandleMessage(c, packet)
 			}
 		}
 
@@ -113,4 +124,8 @@ func (c *Connection) startWrite() {
 
 func (c *Connection) GetWorkerID() int {
 	return c.workerID
+}
+
+func (c *Connection) GetPipeline() btiface.IPipeline {
+	return c.pipeline
 }

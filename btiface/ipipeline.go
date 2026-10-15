@@ -1,10 +1,12 @@
 package btiface
 
 type IPipeline interface {
-	AddLast(name string, h interface{}) IPipeline
+	AddLast(h interface{}) IPipeline
 	FireRead(msg interface{})
 	FireWrite(msg interface{})
 }
+
+type PipelineInitializer func(p IPipeline)
 
 type IHandler interface{}
 

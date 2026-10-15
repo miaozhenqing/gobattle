@@ -1,9 +1,11 @@
 package main
 
 import (
-	"fmt"
+	"gobattle/btiface"
+	"gobattle/btlog"
 	"gobattle/btnet"
 	"gobattle/config"
+	"gobattle/handler"
 	"gobattle/router"
 	utils "gobattle/util"
 	"net"
@@ -14,11 +16,18 @@ import (
 func main() {
 	s := btnet.NewServer()
 
-	s.SetSerializer(btnet.NewSerializer())
-	s.AddRouter(1001, router.NewPingRouter())
+	serializer := btnet.NewSerializer()
+
+	dispatcher := handler.NewDispatchHandler()
+	dispatcher.AddRouter(1001, router.NewPingRouter())
+
+	s.SetPipelineInitializer(func(p btiface.IPipeline) {
+		p.AddLast(handler.NewDecodeHandler(serializer))
+		p.AddLast(dispatcher)
+		p.AddLast(handler.NewEncodeHandler(serializer))
+	})
 
 	s.Start()
-	time.Sleep(3)
 	client := NewClient()
 	client.Test()
 }
@@ -36,11 +45,12 @@ func (c *Client) Test() {
 	if err != nil {
 		panic(err)
 	}
+	serializer := btnet.NewSerializer()
 	for {
 		s := "hello world"
 		message := btnet.NewMessage(uint32(utils.MessageIDLogin), []byte(s))
 
-		buf := btnet.NewSerializer().Serialize(message)
+		buf := serializer.Serialize(message)
 
 		conn.Write(buf)
 
@@ -49,10 +59,11 @@ func (c *Client) Test() {
 
 		n, err := conn.Read(response)
 		if err != nil {
-			fmt.Println("read error:", err)
+			btlog.Ins().Errorf("read error:", err)
 			return
 		}
-		fmt.Println("receive:", string(response[:n]))
+		deserialize, err := serializer.Deserialize(response[:n])
+		btlog.Ins().Info("receive:", string(deserialize.GetData()))
 
 		time.Sleep(time.Second * 3)
 	}

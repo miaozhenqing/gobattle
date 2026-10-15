@@ -12,18 +12,17 @@ type Pipeline struct {
 
 func NewPipeline(conn btiface.IConnection) *Pipeline {
 	p := &Pipeline{conn: conn}
-	h := &dummyHandlerContext{}
-	t := &dummyHandlerContext{}
 
-	p.head = NewHandlerContext(p, h)
-	p.tail = NewHandlerContext(p, t)
+	// head 只处理出站（写连接），tail 只处理入站（兜底），传播循环靠它们终止
+	p.head = NewHandlerContext(p, sharedHead)
+	p.tail = NewHandlerContext(p, sharedTail)
 
 	p.head.next = p.tail
 	p.tail.prev = p.head
 	return p
 }
 
-func (p *Pipeline) AddLast(name string, h interface{}) btiface.IPipeline {
+func (p *Pipeline) AddLast(h interface{}) btiface.IPipeline {
 	ctx := NewHandlerContext(p, h)
 	prev := p.tail.prev
 	prev.next = ctx
@@ -44,5 +43,3 @@ func (p *Pipeline) FireWrite(msg interface{}) {
 func (p *Pipeline) GetConnection() btiface.IConnection {
 	return p.conn
 }
-
-type dummyHandlerContext struct{}
