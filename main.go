@@ -18,12 +18,12 @@ func main() {
 
 	serializer := btnet.NewSerializer(config.ServerConfig.MaxPacketSize)
 
-	dispatcher := handler.NewDispatchHandler()
-	dispatcher.AddRouter(1001, router.NewPingRouter())
+	gdh := handler.NewGameDispatcher()
+	gdh.AddRouter(1001, router.NewPingRouter())
 
 	s.SetPipelineInitializer(func(p btiface.IPipeline) {
 		p.AddLast(handler.NewDecodeHandler(serializer))
-		p.AddLast(dispatcher)
+		p.AddLast(btnet.NewDispatchHandler(gdh))
 		p.AddLast(handler.NewEncodeHandler(serializer))
 	})
 
