@@ -40,7 +40,10 @@ func (mh *MessageHandler) doHandleMessage(task requestTask) {
 			btlog.Ins().Errorf("worker panic, connID:%v err:%v\n%s", task.conn.GetID(), r, debug.Stack())
 		}
 	}()
-
+	if task.conn.IsClosed() {
+		btlog.Ins().Warnf("conn closed, connID:%v", task.conn.GetID())
+		return
+	}
 	p := task.conn.GetPipeline()
 	if p == nil {
 		btlog.Ins().Errorf("pipeline is nil, connID:%v", task.conn.GetID())

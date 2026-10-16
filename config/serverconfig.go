@@ -20,6 +20,8 @@ type serverConfig struct {
 	WriteTimeout time.Duration
 	//发送队列长度
 	SendQueueSize int
+	//优雅关闭时排空发送队列的总超时
+	FlushTimeout time.Duration
 }
 
 func init() {
@@ -35,5 +37,6 @@ func init() {
 		IOReadBuffSize:      1024,
 		WriteTimeout:        time.Second,
 		SendQueueSize:       64,
+		FlushTimeout:        3 * time.Second,
 	}
 }

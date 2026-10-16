@@ -16,5 +16,7 @@ func NewPingRouter() *PingRouter {
 
 func (b *PingRouter) Handle(req btiface.IRequest) {
 	btlog.Ins().Info("req:", string(req.GetData()))
-	req.GetConnection().SendMsg(util.MessageIDPing, req.GetData())
+	if err := req.GetConnection().SendMsg(util.MessageIDPing, req.GetData()); err != nil {
+		btlog.Ins().Warnf("send ping failed, connID:%v, err:%v", req.GetConnection().GetID(), err)
+	}
 }

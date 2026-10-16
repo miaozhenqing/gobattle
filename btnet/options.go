@@ -16,6 +16,8 @@ type Options struct {
 
 	WriteTimeout  time.Duration // 单次写 socket 超时，<=0 表示不设置
 	SendQueueSize int           // 每个连接的发送队列长度
+
+	FlushTimeout time.Duration // 优雅关闭时排空发送队列的总超时，<=0 表示不限制
 }
 
 func DefaultOptions() Options {
@@ -31,5 +33,6 @@ func DefaultOptions() Options {
 		IOReadBuffSize:      1024,
 		WriteTimeout:        5 * time.Second,
 		SendQueueSize:       64,
+		FlushTimeout:        3 * time.Second,
 	}
 }

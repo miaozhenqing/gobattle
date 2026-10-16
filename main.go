@@ -16,14 +16,12 @@ import (
 func main() {
 	s := btnet.NewServer(serverOptions())
 
-	serializer := btnet.NewSerializer(config.ServerConfig.MaxPacketSize)
-
 	gdh := handler.NewGameDispatcher()
 	gdh.AddRouter(util.MessageIDPing, router.NewPingRouter())
 
 	s.SetPipelineInitializer(func(p btiface.IPipeline) {
 		p.AddLast(btnet.NewDispatchHandler(gdh))
-		p.AddLast(btnet.NewEncodeHandler(serializer))
+		p.AddLast(btnet.NewEncodeHandler(btnet.NewSerializer(config.ServerConfig.MaxPacketSize)))
 	})
 
 	err := s.Start()
@@ -48,6 +46,7 @@ func serverOptions() btnet.Options {
 	opts.IOReadBuffSize = cfg.IOReadBuffSize
 	opts.WriteTimeout = cfg.WriteTimeout
 	opts.SendQueueSize = cfg.SendQueueSize
+	opts.FlushTimeout = cfg.FlushTimeout
 	return opts
 }
 

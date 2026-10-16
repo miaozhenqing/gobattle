@@ -33,9 +33,15 @@ func (cm *ConnManager) Len() int {
 }
 
 func (cm *ConnManager) CloseAll() {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	for _, connection := range cm.connections {
-		connection.Stop()
+	// 防止stop是调用remove造成死锁，先拷出列表
+	cm.mu.RLock()
+	conns := make([]btiface.IConnection, 0, len(cm.connections))
+	for _, c := range cm.connections {
+		conns = append(conns, c)
+	}
+	cm.mu.RUnlock()
+
+	for _, c := range conns {
+		c.Stop()
 	}
 }

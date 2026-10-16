@@ -13,7 +13,6 @@ type Pipeline struct {
 func NewPipeline(conn btiface.IConnection) *Pipeline {
 	p := &Pipeline{conn: conn}
 
-	// head 只处理出站（写连接），tail 只处理入站（兜底），传播循环靠它们终止
 	p.head = NewHandlerContext(p, sharedHead)
 	p.tail = NewHandlerContext(p, sharedTail)
 

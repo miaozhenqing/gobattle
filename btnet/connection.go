@@ -6,7 +6,17 @@ import (
 	"gobattle/btiface"
 	"gobattle/btlog"
 	"net"
+	"sync"
+	"sync/atomic"
 	"time"
+)
+
+var ErrConnClosed = errors.New("conn is closed")
+
+const (
+	connActive int32 = iota
+	connClosing
+	connClosed
 )
 
 type Connection struct {
@@ -20,6 +30,9 @@ type Connection struct {
 	cancelCtx      context.Context
 	cancelFunc     context.CancelFunc
 	pipeline       btiface.IPipeline
+	stopOnce       sync.Once
+	state          atomic.Int32
+	flushChan      chan struct{}
 
 	workerID int
 }
@@ -33,6 +46,7 @@ func NewConnection(id int64, conn *net.TCPConn, opts *Options, messageHandler bt
 		msgChan:        make(chan []byte, opts.SendQueueSize),
 		frameDecoder:   NewFrameDecoder(opts.MaxPacketSize, opts.IOReadBuffSize),
 		connMgr:        connMgr,
+		flushChan:      make(chan struct{}),
 
 		workerID: messageHandler.AllocateWorkerID(id),
 	}
@@ -47,18 +61,25 @@ func (c *Connection) GetID() int64 {
 	return c.id
 }
 func (c *Connection) Start() {
-
 	go c.startRead()
 	go c.startWrite()
+}
 
-	select {
-	case <-c.cancelCtx.Done():
+func (c *Connection) Stop() {
+	c.stopOnce.Do(func() {
+		c.state.Store(connClosed)
+		c.cancelFunc()
 		c.destroy()
-		return
+	})
+}
+
+func (c *Connection) FlushAndStop() {
+	if c.state.CompareAndSwap(connActive, connClosing) {
+		close(c.flushChan)
 	}
 }
-func (c *Connection) Stop() {
-	c.cancelFunc()
+func (c *Connection) IsClosed() bool {
+	return c.state.Load() != connActive
 }
 
 func (c *Connection) destroy() {
@@ -66,8 +87,15 @@ func (c *Connection) destroy() {
 	c.connMgr.Remove(c.GetID())
 }
 
-func (c *Connection) SendMsg(msgId uint32, data []byte) {
+func (c *Connection) SendMsg(msgId uint32, data []byte) error {
+	if c.IsClosed() {
+		return ErrConnClosed
+	}
 	c.pipeline.FireWrite(NewMessage(msgId, data))
+	if c.state.Load() == connClosed {
+		return ErrConnClosed
+	}
+	return nil
 }
 
 func (c *Connection) writeRaw(data []byte) {
@@ -81,7 +109,11 @@ func (c *Connection) writeRaw(data []byte) {
 }
 
 func (c *Connection) startRead() {
-	defer c.Stop()
+	defer func() {
+		if c.state.Load() != connClosing {
+			c.Stop()
+		}
+	}()
 	buf := make([]byte, c.opts.IOReadBuffSize)
 
 	for {
@@ -125,16 +157,34 @@ func (c *Connection) startWrite() {
 		case <-c.cancelCtx.Done():
 			btlog.Ins().Infof("write done, connID:%v", c.GetID())
 			return
+		case <-c.flushChan:
+			c.flush()
+			return
 		}
 	}
 }
 
-func (c *Connection) write(data []byte) error {
-	if timeout := c.opts.WriteTimeout; timeout > 0 {
-		if err := c.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
-			btlog.Ins().Errorf("set write deadline error, connID:%v, err:%v", c.GetID(), err)
-			return err
+func (c *Connection) flush() {
+	var deadline time.Time
+	if t := c.opts.FlushTimeout; t > 0 {
+		deadline = time.Now().Add(t)
+	}
+	for {
+		select {
+		case data := <-c.msgChan:
+			if err := c.writeWithDeadline(data, deadline); err != nil {
+				return
+			}
+		default:
+			return
 		}
+	}
+}
+
+func (c *Connection) writeWithDeadline(data []byte, deadline time.Time) error {
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		btlog.Ins().Errorf("set write deadline error, connID:%v, err:%v", c.GetID(), err)
+		return err
 	}
 	if _, err := c.conn.Write(data); err != nil {
 		var ne net.Error
@@ -146,6 +196,13 @@ func (c *Connection) write(data []byte) error {
 		return err
 	}
 	return nil
+}
+func (c *Connection) write(data []byte) error {
+	var deadline time.Time
+	if t := c.opts.WriteTimeout; t > 0 {
+		deadline = time.Now().Add(t)
+	}
+	return c.writeWithDeadline(data, deadline)
 }
 
 func (c *Connection) GetWorkerID() int {
