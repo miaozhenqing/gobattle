@@ -5,9 +5,9 @@ import (
 	"gobattle/btlog"
 )
 
-type PingRouter struct {
-	BaseRouter
-}
+var _ btiface.IRouter = (*PingRouter)(nil)
+
+type PingRouter struct{}
 
 func NewPingRouter() *PingRouter {
 	return &PingRouter{}

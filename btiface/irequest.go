@@ -6,6 +6,4 @@ type IRequest interface {
 	GetMsgId() uint32
 
 	GetData() []byte
-
-	HandleRouter(router IRouter)
 }

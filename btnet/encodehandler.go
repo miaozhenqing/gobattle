@@ -1,4 +1,4 @@
-package handler
+package btnet
 
 import (
 	"gobattle/btiface"

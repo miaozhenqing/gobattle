@@ -7,7 +7,7 @@ import (
 	"gobattle/config"
 	"gobattle/handler"
 	"gobattle/router"
-	utils "gobattle/util"
+	"gobattle/util"
 	"net"
 	"strconv"
 	"time"
@@ -23,7 +23,7 @@ func main() {
 
 	s.SetPipelineInitializer(func(p btiface.IPipeline) {
 		p.AddLast(btnet.NewDispatchHandler(gdh))
-		p.AddLast(handler.NewEncodeHandler(serializer))
+		p.AddLast(btnet.NewEncodeHandler(serializer))
 	})
 
 	err := s.Start()
@@ -67,7 +67,7 @@ func (c *Client) Test() {
 	serializer := btnet.NewSerializer(config.ServerConfig.MaxPacketSize)
 	for {
 		s := "hello world"
-		message := btnet.NewMessage(uint32(utils.MessageIDLogin), []byte(s))
+		message := btnet.NewMessage(uint32(util.MessageIDLogin), []byte(s))
 
 		buf := serializer.Serialize(message)
 

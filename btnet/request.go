@@ -58,7 +58,3 @@ func (r *Request) GetMsgId() uint32 {
 func (r *Request) GetData() []byte {
 	return r.data
 }
-
-func (r *Request) HandleRouter(router btiface.IRouter) {
-	router.Handle(r)
-}
