@@ -7,8 +7,8 @@ import (
 )
 
 type requestTask struct {
-	conn  btiface.IConnection
-	frame []byte
+	conn btiface.IConnection
+	msg  btiface.IMessage
 }
 
 type MessageHandler struct {
@@ -27,8 +27,8 @@ func NewMessageHandler(workerPoolSize, workerPoolQueueSize uint32) *MessageHandl
 	return m
 }
 
-func (mh *MessageHandler) HandleMessage(conn btiface.IConnection, frame []byte) {
-	mh.workerQueues[conn.GetWorkerID()] <- requestTask{conn: conn, frame: frame}
+func (mh *MessageHandler) HandleMessage(conn btiface.IConnection, msg btiface.IMessage) {
+	mh.workerQueues[conn.GetWorkerID()] <- requestTask{conn: conn, msg: msg}
 }
 
 func (mh *MessageHandler) doHandleMessage(task requestTask) {
@@ -43,7 +43,7 @@ func (mh *MessageHandler) doHandleMessage(task requestTask) {
 		btlog.Ins().Errorf("pipeline is nil, connID:%v", task.conn.GetID())
 		return
 	}
-	p.FireRead(task.frame)
+	p.FireRead(task.msg)
 }
 
 func (mh *MessageHandler) StartWorkPool() {

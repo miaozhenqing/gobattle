@@ -100,18 +100,15 @@ func (c *Connection) startRead() {
 				continue
 			}
 			//解包
-			packets, err := c.frameDecoder.Decode(buf[:size])
+			msgs, err := c.frameDecoder.Decode(buf[:size])
 			if err != nil {
 				btlog.Ins().Errorf("decode error:%v", err)
 				return
 			}
-			if len(packets) == 0 {
-				btlog.Ins().Warn("decode no packet")
-			}
 			//解码
-			for _, packet := range packets {
+			for _, msg := range msgs {
 				//这里只往通道放消息，阻塞了起到背压作用
-				c.messageHandler.HandleMessage(c, packet)
+				c.messageHandler.HandleMessage(c, msg)
 			}
 		}
 
