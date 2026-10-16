@@ -6,10 +6,10 @@ import (
 )
 
 type Serializer struct {
-	maxFrameSize uint32
+	maxFrameSize int
 }
 
-func NewSerializer(maxFrameSize uint32) *Serializer {
+func NewSerializer(maxFrameSize int) *Serializer {
 	return &Serializer{maxFrameSize: maxFrameSize}
 }
 
@@ -29,10 +29,11 @@ func (s *Serializer) Deserialize(data []byte) (btiface.IMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if uint64(headerSize)+uint64(header.DataLen) > uint64(s.maxFrameSize) {
-		return nil, fmt.Errorf("%w: dataLen=%d", ErrFrameTooLarge, header.DataLen)
+	totalLen, err := frameLen(header, s.maxFrameSize)
+	if err != nil {
+		return nil, err
 	}
-	if uint64(len(data)) != uint64(headerSize)+uint64(header.DataLen) {
+	if len(data) != totalLen {
 		return nil, fmt.Errorf("frame length mismatch: declared=%d, actual=%d", header.DataLen, len(data)-headerSize)
 	}
 

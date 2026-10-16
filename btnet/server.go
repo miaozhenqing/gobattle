@@ -64,7 +64,7 @@ var (
 func (s *server) acceptLoop() {
 	var delay time.Duration
 	for {
-		if s.connMgr.Len() >= int(s.opts.MaxConn) {
+		if s.connMgr.Len() >= s.opts.MaxConn {
 			//todo 先暴力sleep
 			time.Sleep(1000 * time.Millisecond)
 			btlog.Ins().Warn("over max conn")

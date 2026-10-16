@@ -2,7 +2,6 @@ package btnet
 
 import (
 	"errors"
-	"fmt"
 	"gobattle/btiface"
 )
 
@@ -16,11 +15,11 @@ import (
 var ErrFrameTooLarge = errors.New("frame too large")
 
 type FrameDecoder struct {
-	maxFrameSize uint32
+	maxFrameSize int
 	buffer       []byte
 }
 
-func NewFrameDecoder(maxFrameSize, initBufSize uint32) *FrameDecoder {
+func NewFrameDecoder(maxFrameSize, initBufSize int) *FrameDecoder {
 	return &FrameDecoder{
 		maxFrameSize: maxFrameSize,
 		buffer:       make([]byte, 0, initBufSize),
@@ -47,10 +46,10 @@ func (d *FrameDecoder) Decode(b []byte) ([]btiface.IMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		if uint64(headerSize)+uint64(header.DataLen) > uint64(d.maxFrameSize) {
-			return nil, fmt.Errorf("%w: dataLen=%d, maxFrameSize=%d", ErrFrameTooLarge, header.DataLen, d.maxFrameSize)
+		totalLen, err := frameLen(header, d.maxFrameSize)
+		if err != nil {
+			return nil, err
 		}
-		totalLen := headerSize + int(header.DataLen)
 		if len(data)-off < totalLen {
 			break
 		}

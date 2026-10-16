@@ -1,7 +1,7 @@
 package util
 
-type MessageID uint32
+type MessageID = uint32
 
 const (
-	MessageIDLogin MessageID = 1001
+	MessageIDPing MessageID = 1001
 )

@@ -10,16 +10,16 @@ type serverConfig struct {
 	Name      string
 	IPVersion string
 
-	MaxPacketSize       uint32
-	MaxConn             uint32
-	WorkerPoolSize      uint32
-	WorkerPoolQueueSize uint32
-	IOReadBuffSize      uint32
+	MaxPacketSize       int
+	MaxConn             int
+	WorkerPoolSize      int
+	WorkerPoolQueueSize int
+	IOReadBuffSize      int
 
 	//写超时
 	WriteTimeout time.Duration
 	//发送队列长度
-	SendQueueSize uint32
+	SendQueueSize int
 }
 
 func init() {

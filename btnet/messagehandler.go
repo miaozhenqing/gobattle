@@ -12,12 +12,15 @@ type requestTask struct {
 }
 
 type MessageHandler struct {
-	workerPoolSize      uint32
-	workerPoolQueueSize uint32
+	workerPoolSize      int
+	workerPoolQueueSize int
 	workerQueues        []chan requestTask
 }
 
-func NewMessageHandler(workerPoolSize, workerPoolQueueSize uint32) *MessageHandler {
+func NewMessageHandler(workerPoolSize, workerPoolQueueSize int) *MessageHandler {
+	if workerPoolSize <= 0 {
+		panic("workerPoolSize must be > 0")
+	}
 	m := &MessageHandler{
 		workerPoolSize:      workerPoolSize,
 		workerPoolQueueSize: workerPoolQueueSize,
@@ -47,7 +50,7 @@ func (mh *MessageHandler) doHandleMessage(task requestTask) {
 }
 
 func (mh *MessageHandler) StartWorkPool() {
-	for i := 0; i < int(mh.workerPoolSize); i++ {
+	for i := 0; i < mh.workerPoolSize; i++ {
 		mh.workerQueues[i] = make(chan requestTask, mh.workerPoolQueueSize)
 		go mh.startWorker(i, mh.workerQueues[i])
 	}

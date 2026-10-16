@@ -19,7 +19,7 @@ func main() {
 	serializer := btnet.NewSerializer(config.ServerConfig.MaxPacketSize)
 
 	gdh := handler.NewGameDispatcher()
-	gdh.AddRouter(1001, router.NewPingRouter())
+	gdh.AddRouter(util.MessageIDPing, router.NewPingRouter())
 
 	s.SetPipelineInitializer(func(p btiface.IPipeline) {
 		p.AddLast(btnet.NewDispatchHandler(gdh))
@@ -67,7 +67,7 @@ func (c *Client) Test() {
 	serializer := btnet.NewSerializer(config.ServerConfig.MaxPacketSize)
 	for {
 		s := "hello world"
-		message := btnet.NewMessage(uint32(util.MessageIDLogin), []byte(s))
+		message := btnet.NewMessage(util.MessageIDPing, []byte(s))
 
 		buf := serializer.Serialize(message)
 

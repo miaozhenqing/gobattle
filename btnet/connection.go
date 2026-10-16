@@ -66,8 +66,8 @@ func (c *Connection) destroy() {
 	c.connMgr.Remove(c.GetID())
 }
 
-func (c *Connection) SendMsg(msgId int32, bytes []byte) {
-	c.pipeline.FireWrite(NewMessage(uint32(msgId), bytes))
+func (c *Connection) SendMsg(msgId uint32, data []byte) {
+	c.pipeline.FireWrite(NewMessage(msgId, data))
 }
 
 func (c *Connection) writeRaw(data []byte) {

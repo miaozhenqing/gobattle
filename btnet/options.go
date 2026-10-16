@@ -8,14 +8,14 @@ type Options struct {
 	TcpPort   int
 	IPVersion string
 
-	MaxPacketSize       uint32 // 单帧最大长度（含帧头）
-	MaxConn             uint32
-	WorkerPoolSize      uint32
-	WorkerPoolQueueSize uint32
-	IOReadBuffSize      uint32
+	MaxPacketSize       int // 单帧最大长度（含帧头）
+	MaxConn             int
+	WorkerPoolSize      int
+	WorkerPoolQueueSize int
+	IOReadBuffSize      int
 
 	WriteTimeout  time.Duration // 单次写 socket 超时，<=0 表示不设置
-	SendQueueSize uint32        // 每个连接的发送队列长度
+	SendQueueSize int           // 每个连接的发送队列长度
 }
 
 func DefaultOptions() Options {
