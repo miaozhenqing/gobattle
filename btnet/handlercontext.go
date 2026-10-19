@@ -8,9 +8,10 @@ type HandlerContext struct {
 	inHandler  btiface.IInHandler
 	outHandler btiface.IOutHandler
 	pipeline   *Pipeline
+	executor   btiface.IEventLoop
 }
 
-func NewHandlerContext(p *Pipeline, h btiface.IHandler) *HandlerContext {
+func NewHandlerContext(p *Pipeline, h btiface.IHandler, executor btiface.IEventLoop) *HandlerContext {
 	if h == nil {
 		panic("handler is nil")
 	}
@@ -24,6 +25,7 @@ func NewHandlerContext(p *Pipeline, h btiface.IHandler) *HandlerContext {
 	if ctx.inHandler == nil && ctx.outHandler == nil {
 		panic("handler type error")
 	}
+	ctx.executor = executor
 	return ctx
 }
 
@@ -36,7 +38,20 @@ func (hc *HandlerContext) FireRead(msg interface{}) {
 	for next.inHandler == nil {
 		next = next.next
 	}
-	next.inHandler.OnRead(next, msg)
+	next.invokeRead(hc.executor, msg)
+}
+
+func (hc *HandlerContext) invokeRead(el btiface.IEventLoop, msg interface{}) {
+	if hc.executor == el {
+		hc.inHandler.OnRead(hc, msg)
+		return
+	}
+	hc.executor.Execute(func() {
+		if hc.GetConnection().IsClosed() {
+			return
+		}
+		hc.inHandler.OnRead(hc, msg)
+	})
 }
 
 func (hc *HandlerContext) FireWrite(msg interface{}) {
@@ -44,5 +59,14 @@ func (hc *HandlerContext) FireWrite(msg interface{}) {
 	for prev.outHandler == nil {
 		prev = prev.prev
 	}
-	prev.outHandler.OnWrite(prev, msg)
+	prev.invokeWrite(hc.executor, msg)
+}
+func (hc *HandlerContext) invokeWrite(el btiface.IEventLoop, msg interface{}) {
+	if hc.executor == el {
+		hc.outHandler.OnWrite(hc, msg)
+		return
+	}
+	hc.executor.Execute(func() {
+		hc.outHandler.OnWrite(hc, msg)
+	})
 }

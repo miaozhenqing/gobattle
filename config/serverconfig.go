@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"runtime"
+	"time"
+)
 
 var ServerConfig *serverConfig
 
@@ -10,11 +13,14 @@ type serverConfig struct {
 	Name      string
 	IPVersion string
 
-	MaxPacketSize       int
-	MaxConn             int
-	WorkerPoolSize      int
-	WorkerPoolQueueSize int
-	IOReadBuffSize      int
+	MaxPacketSize  int
+	MaxConn        int
+	IOReadBuffSize int
+
+	//io loop 数量
+	IOLoopSize int
+	//业务 loop 数量
+	BizLoopSize int
 
 	//写超时
 	WriteTimeout time.Duration
@@ -28,18 +34,18 @@ type serverConfig struct {
 
 func init() {
 	ServerConfig = &serverConfig{
-		Name:                "gobattle",
-		IPVersion:           "tcp4",
-		TcpPort:             9528,
-		Host:                "127.0.0.1",
-		MaxConn:             12000,
-		MaxPacketSize:       4096,
-		WorkerPoolSize:      5,
-		WorkerPoolQueueSize: 1024,
-		IOReadBuffSize:      1024,
-		WriteTimeout:        time.Second,
-		SendQueueSize:       64,
-		FlushTimeout:        3 * time.Second,
-		IdleTimeout:         30 * time.Second,
+		Name:           "gobattle",
+		IPVersion:      "tcp4",
+		TcpPort:        9528,
+		Host:           "127.0.0.1",
+		MaxConn:        12000,
+		MaxPacketSize:  4096,
+		IOLoopSize:     runtime.NumCPU(),
+		BizLoopSize:    5,
+		IOReadBuffSize: 1024,
+		WriteTimeout:   time.Second,
+		SendQueueSize:  64,
+		FlushTimeout:   3 * time.Second,
+		IdleTimeout:    30 * time.Second,
 	}
 }

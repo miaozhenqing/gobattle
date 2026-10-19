@@ -20,38 +20,36 @@ const (
 )
 
 type Connection struct {
-	id             int64
-	conn           *net.TCPConn
-	opts           *Options
-	messageHandler btiface.IMessageHandler
-	msgChan        chan []byte
-	frameDecoder   btiface.IFrameDecoder
-	connMgr        btiface.IConnManager
-	cancelCtx      context.Context
-	cancelFunc     context.CancelFunc
-	pipeline       btiface.IPipeline
-	stopOnce       sync.Once
-	state          atomic.Int32
-	flushChan      chan struct{}
+	id           int64
+	conn         *net.TCPConn
+	opts         *Options
+	msgChan      chan []byte
+	frameDecoder btiface.IFrameDecoder
+	connMgr      btiface.IConnManager
+	cancelCtx    context.Context
+	cancelFunc   context.CancelFunc
+	pipeline     *Pipeline
+	stopOnce     sync.Once
+	state        atomic.Int32
+	flushChan    chan struct{}
 
-	workerID int
+	ioLoop btiface.IEventLoop
 }
 
-func NewConnection(id int64, conn *net.TCPConn, opts *Options, messageHandler btiface.IMessageHandler, connMgr btiface.IConnManager, initializer btiface.PipelineInitializer) *Connection {
+func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IEventLoop, connMgr btiface.IConnManager,
+	initializer btiface.PipelineInitializer) *Connection {
 	c := &Connection{
-		id:             id,
-		conn:           conn,
-		opts:           opts,
-		messageHandler: messageHandler,
-		msgChan:        make(chan []byte, opts.SendQueueSize),
-		frameDecoder:   NewFrameDecoder(opts.MaxPacketSize, opts.IOReadBuffSize),
-		connMgr:        connMgr,
-		flushChan:      make(chan struct{}),
-
-		workerID: messageHandler.AllocateWorkerID(id),
+		id:           id,
+		conn:         conn,
+		opts:         opts,
+		ioLoop:       ioLoop,
+		msgChan:      make(chan []byte, opts.SendQueueSize),
+		frameDecoder: NewFrameDecoder(opts.MaxPacketSize, opts.IOReadBuffSize),
+		connMgr:      connMgr,
+		flushChan:    make(chan struct{}),
 	}
 	c.cancelCtx, c.cancelFunc = context.WithCancel(context.Background())
-	p := NewPipeline(c)
+	p := NewPipeline(c, ioLoop)
 	initializer(p)
 	c.pipeline = p
 	return c
@@ -92,9 +90,6 @@ func (c *Connection) SendMsg(msgId uint32, data []byte) error {
 		return ErrConnClosed
 	}
 	c.pipeline.FireWrite(NewMessage(msgId, data))
-	if c.state.Load() == connClosed {
-		return ErrConnClosed
-	}
 	return nil
 }
 
@@ -145,14 +140,19 @@ func (c *Connection) startRead() {
 			btlog.Ins().Errorf("decode error:%v", err)
 			return
 		}
-		if len(msgs) > 0 {
-			activeAt = time.Now()
+		if len(msgs) == 0 {
+			continue
 		}
+		activeAt = time.Now()
 		//解码
-		for _, msg := range msgs {
-			//这里只往通道放消息，阻塞了起到背压作用
-			c.messageHandler.HandleMessage(c, msg)
-		}
+		c.ioLoop.Execute(func() {
+			for _, m := range msgs {
+				if c.IsClosed() {
+					return
+				}
+				c.pipeline.fireReadInLoop(m)
+			}
+		})
 	}
 }
 
@@ -222,8 +222,8 @@ func (c *Connection) write(data []byte) error {
 	return c.writeWithDeadline(data, deadline)
 }
 
-func (c *Connection) GetWorkerID() int {
-	return c.workerID
+func (c *Connection) EventLoop() btiface.IEventLoop {
+	return c.ioLoop
 }
 
 func (c *Connection) GetPipeline() btiface.IPipeline {

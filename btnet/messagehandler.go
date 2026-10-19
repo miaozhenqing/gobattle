@@ -31,7 +31,7 @@ func NewMessageHandler(workerPoolSize, workerPoolQueueSize int) *MessageHandler 
 }
 
 func (mh *MessageHandler) HandleMessage(conn btiface.IConnection, msg btiface.IMessage) {
-	mh.workerQueues[conn.GetWorkerID()] <- requestTask{conn: conn, msg: msg}
+	mh.workerQueues[mh.AllocateWorkerID(conn.GetID())] <- requestTask{conn: conn, msg: msg}
 }
 
 func (mh *MessageHandler) doHandleMessage(task requestTask) {

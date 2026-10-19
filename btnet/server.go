@@ -11,18 +11,20 @@ import (
 )
 
 type server struct {
-	opts           Options
-	connMgr        btiface.IConnManager
-	messageHandler btiface.IMessageHandler
-	initializer    btiface.PipelineInitializer
-	listener       *net.TCPListener
+	opts        Options
+	connMgr     btiface.IConnManager
+	initializer btiface.PipelineInitializer
+	listener    *net.TCPListener
+	bossGroup   btiface.IEventLoopGroup
+	workerGroup btiface.IEventLoopGroup
 }
 
-func NewServer(opts Options) *server {
+func NewServer(opts Options, boss, worker btiface.IEventLoopGroup) *server {
 	s := &server{
-		opts:           opts,
-		connMgr:        NewConnManager(),
-		messageHandler: NewMessageHandler(opts.WorkerPoolSize, opts.WorkerPoolQueueSize),
+		opts:        opts,
+		connMgr:     NewConnManager(),
+		bossGroup:   boss,
+		workerGroup: worker,
 	}
 	return s
 }
@@ -52,7 +54,7 @@ func (s *server) Start() error {
 		return err
 	}
 	s.listener = listener
-	go s.acceptLoop()
+	s.bossGroup.Next(0).Execute(s.acceptLoop)
 	return nil
 }
 
@@ -91,12 +93,13 @@ func (s *server) acceptLoop() {
 		}
 		delay = 0
 
-		go func() {
-			connID := generalConnID()
-			connection := NewConnection(connID, tcp, &s.opts, s.messageHandler, s.connMgr, s.initializer)
-			s.connMgr.Add(connection)
-			connection.Start()
-		}()
+		connID := generalConnID()
+		loop := s.workerGroup.Next(connID)
+		loop.Execute(func() {
+			c := NewConnection(connID, tcp, &s.opts, loop, s.connMgr, s.initializer)
+			s.connMgr.Add(c)
+			c.Start()
+		})
 	}
 }
 

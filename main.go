@@ -14,14 +14,18 @@ import (
 )
 
 func main() {
-	s := btnet.NewServer(serverOptions())
+	cfg := config.ServerConfig
+	boss := btnet.NewEventLoopGroup("boss", 1)
+	worker := btnet.NewEventLoopGroup("worker", cfg.IOLoopSize)
+	biz := btnet.NewEventLoopGroup("biz", cfg.BizLoopSize)
+	s := btnet.NewServer(serverOptions(), boss, worker)
 
 	gdh := handler.NewGameDispatcher()
 	gdh.AddRouter(util.MessageIDPing, router.NewPingRouter())
 
 	s.SetPipelineInitializer(func(p btiface.IPipeline) {
-		p.AddLast(btnet.NewDispatchHandler(gdh))
-		p.AddLast(btnet.NewEncodeHandler(btnet.NewSerializer(config.ServerConfig.MaxPacketSize)))
+		p.AddLastGroup(biz, btnet.NewDispatchHandler(gdh))
+		p.AddLast(btnet.NewEncodeHandler(btnet.NewSerializer(cfg.MaxPacketSize)))
 	})
 
 	err := s.Start()
@@ -41,8 +45,6 @@ func serverOptions() btnet.Options {
 	opts.IPVersion = cfg.IPVersion
 	opts.MaxPacketSize = cfg.MaxPacketSize
 	opts.MaxConn = cfg.MaxConn
-	opts.WorkerPoolSize = cfg.WorkerPoolSize
-	opts.WorkerPoolQueueSize = cfg.WorkerPoolQueueSize
 	opts.IOReadBuffSize = cfg.IOReadBuffSize
 	opts.WriteTimeout = cfg.WriteTimeout
 	opts.SendQueueSize = cfg.SendQueueSize

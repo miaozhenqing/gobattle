@@ -4,6 +4,8 @@ type IPipeline interface {
 	AddLast(h interface{}) IPipeline
 	FireRead(msg interface{})
 	FireWrite(msg interface{})
+
+	AddLastGroup(g IEventLoopGroup, h interface{}) IPipeline
 }
 
 type PipelineInitializer func(p IPipeline)
