@@ -18,6 +18,7 @@ type Options struct {
 	SendQueueSize int           // 每个连接的发送队列长度
 
 	FlushTimeout time.Duration // 优雅关闭时排空发送队列的总超时，<=0 表示不限制
+	IdleTimeout  time.Duration // 读空闲超时，期间没收到完整帧即断开，<=0 表示不检测
 }
 
 func DefaultOptions() Options {
@@ -34,5 +35,6 @@ func DefaultOptions() Options {
 		WriteTimeout:        5 * time.Second,
 		SendQueueSize:       64,
 		FlushTimeout:        3 * time.Second,
+		IdleTimeout:         30 * time.Second,
 	}
 }

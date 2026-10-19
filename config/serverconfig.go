@@ -22,6 +22,8 @@ type serverConfig struct {
 	SendQueueSize int
 	//优雅关闭时排空发送队列的总超时
 	FlushTimeout time.Duration
+	//读空闲超时
+	IdleTimeout time.Duration
 }
 
 func init() {
@@ -38,5 +40,6 @@ func init() {
 		WriteTimeout:        time.Second,
 		SendQueueSize:       64,
 		FlushTimeout:        3 * time.Second,
+		IdleTimeout:         30 * time.Second,
 	}
 }

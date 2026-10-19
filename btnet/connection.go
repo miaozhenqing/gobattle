@@ -115,37 +115,54 @@ func (c *Connection) startRead() {
 		}
 	}()
 	buf := make([]byte, c.opts.IOReadBuffSize)
+	// 上次解出完整帧的时间
+	activeAt := time.Now()
 
 	for {
-		select {
-		case <-c.cancelCtx.Done():
-			btlog.Ins().Info("read done")
+		if err := c.conn.SetReadDeadline(c.readDeadline(activeAt)); err != nil {
+			btlog.Ins().Errorf("set read deadline error, connID:%v, err:%v", c.GetID(), err)
 			return
-		default:
-			//读取数据到数组
-			size, err := c.conn.Read(buf)
-			if err != nil {
-				btlog.Ins().Errorf("read error:%v", err)
-				return
-			}
-			if size == 0 {
-				continue
-			}
-			//解包
-			msgs, err := c.frameDecoder.Decode(buf[:size])
-			if err != nil {
-				btlog.Ins().Errorf("decode error:%v", err)
-				return
-			}
-			//解码
-			for _, msg := range msgs {
-				//这里只往通道放消息，阻塞了起到背压作用
-				c.messageHandler.HandleMessage(c, msg)
-			}
 		}
-
+		//读取数据到数组
+		size, err := c.conn.Read(buf)
+		if err != nil {
+			var ne net.Error
+			if c.IsClosed() {
+				btlog.Ins().Infof("read done, connID:%v", c.GetID())
+			} else if errors.As(err, &ne) && ne.Timeout() {
+				btlog.Ins().Infof("idle timeout, connID:%v", c.GetID())
+			} else {
+				btlog.Ins().Errorf("read error, connID:%v, err:%v", c.GetID(), err)
+			}
+			return
+		}
+		if size == 0 {
+			continue
+		}
+		//解包
+		msgs, err := c.frameDecoder.Decode(buf[:size])
+		if err != nil {
+			btlog.Ins().Errorf("decode error:%v", err)
+			return
+		}
+		if len(msgs) > 0 {
+			activeAt = time.Now()
+		}
+		//解码
+		for _, msg := range msgs {
+			//这里只往通道放消息，阻塞了起到背压作用
+			c.messageHandler.HandleMessage(c, msg)
+		}
 	}
 }
+
+func (c *Connection) readDeadline(activeAt time.Time) time.Time {
+	if t := c.opts.IdleTimeout; t > 0 {
+		return activeAt.Add(t)
+	}
+	return time.Time{}
+}
+
 func (c *Connection) startWrite() {
 	defer c.Stop()
 	for {

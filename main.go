@@ -47,6 +47,7 @@ func serverOptions() btnet.Options {
 	opts.WriteTimeout = cfg.WriteTimeout
 	opts.SendQueueSize = cfg.SendQueueSize
 	opts.FlushTimeout = cfg.FlushTimeout
+	opts.IdleTimeout = cfg.IdleTimeout
 	return opts
 }
 
