@@ -1,8 +1,14 @@
 package btnet
 
 import (
+	"errors"
 	"gobattle/btiface"
 	"gobattle/btlog"
+)
+
+var (
+	sharedHead = &headHandler{}
+	sharedTail = &tailHandler{}
 )
 
 type rawWriter interface {
@@ -33,7 +39,13 @@ func (t *tailHandler) OnRead(ctx btiface.IHandlerContext, msg interface{}) {
 func (t *tailHandler) OnActive(ctx btiface.IHandlerContext)   {}
 func (t *tailHandler) OnInactive(ctx btiface.IHandlerContext) {}
 
-var (
-	sharedHead = &headHandler{}
-	sharedTail = &tailHandler{}
-)
+// 没有 handler 处理的异常,打日志并关闭连接
+func (t *tailHandler) OnException(ctx btiface.IHandlerContext, err error) {
+	var pe *PanicError
+	if errors.As(err, &pe) {
+		btlog.Ins().Errorf("unhandled exception, connID:%v err:%v\n%s", ctx.GetConnection().GetID(), err, pe.Stack)
+	} else {
+		btlog.Ins().Errorf("unhandled exception, connID:%v err:%v", ctx.GetConnection().GetID(), err)
+	}
+	ctx.GetConnection().Stop()
+}

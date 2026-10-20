@@ -67,3 +67,6 @@ func (p *Pipeline) fireActiveInLoop() {
 func (p *Pipeline) fireInactiveInLoop() {
 	p.head.FireInactive()
 }
+func (p *Pipeline) fireExceptionInLoop(err error) {
+	p.head.FireException(err)
+}

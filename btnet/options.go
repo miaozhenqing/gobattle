@@ -1,6 +1,9 @@
 package btnet
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type Options struct {
 	Name      string
@@ -33,4 +36,17 @@ func DefaultOptions() Options {
 		FlushTimeout:   3 * time.Second,
 		IdleTimeout:    30 * time.Second,
 	}
+}
+func (o *Options) validate() error {
+	switch {
+	case o.MaxPacketSize < headerSize:
+		return fmt.Errorf("MaxPacketSize %d < headerSize %d", o.MaxPacketSize, headerSize)
+	case o.IOReadBuffSize <= 0: // 为 0 时 Read 永远返回 0，读协程会空转
+		return fmt.Errorf("IOReadBuffSize must be > 0")
+	case o.SendQueueSize < 0:
+		return fmt.Errorf("SendQueueSize must be >= 0")
+	case o.MaxConn <= 0:
+		return fmt.Errorf("MaxConn must be > 0")
+	}
+	return nil
 }

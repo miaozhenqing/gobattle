@@ -5,7 +5,9 @@ import (
 	"errors"
 	"gobattle/btiface"
 	"gobattle/btlog"
+	"io"
 	"net"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,7 +39,7 @@ type Connection struct {
 }
 
 func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IEventLoop, connMgr btiface.IConnManager,
-	initializer btiface.PipelineInitializer) *Connection {
+	initializer btiface.PipelineInitializer) (*Connection, error) {
 	c := &Connection{
 		id:           id,
 		conn:         conn,
@@ -50,9 +52,22 @@ func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IE
 	}
 	c.cancelCtx, c.cancelFunc = context.WithCancel(context.Background())
 	p := NewPipeline(c, ioLoop)
-	initializer(p)
+	if err := runInitializer(initializer, p); err != nil {
+		c.cancelFunc()
+		return nil, err
+	}
 	c.pipeline = p
-	return c
+	return c, nil
+}
+
+func runInitializer(init btiface.PipelineInitializer, p *Pipeline) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &PanicError{Value: r, Stack: debug.Stack()}
+		}
+	}()
+	init(p)
+	return nil
 }
 
 func (c *Connection) GetID() int64 {
@@ -127,10 +142,12 @@ func (c *Connection) startRead() {
 			var ne net.Error
 			if c.IsClosed() {
 				btlog.Ins().Infof("read done, connID:%v", c.GetID())
+			} else if errors.Is(err, io.EOF) {
+				btlog.Ins().Infof("peer closed, connID:%v", c.GetID())
 			} else if errors.As(err, &ne) && ne.Timeout() {
 				btlog.Ins().Infof("idle timeout, connID:%v", c.GetID())
 			} else {
-				btlog.Ins().Errorf("read error, connID:%v, err:%v", c.GetID(), err)
+				c.fireException(err)
 			}
 			return
 		}
@@ -140,7 +157,7 @@ func (c *Connection) startRead() {
 		//解包
 		msgs, err := c.frameDecoder.Decode(buf[:size])
 		if err != nil {
-			btlog.Ins().Errorf("decode error:%v", err)
+			c.fireException(err)
 			return
 		}
 		if len(msgs) == 0 {
@@ -231,4 +248,10 @@ func (c *Connection) EventLoop() btiface.IEventLoop {
 
 func (c *Connection) GetPipeline() btiface.IPipeline {
 	return c.pipeline
+}
+
+func (c *Connection) fireException(err error) {
+	c.ioLoop.Execute(func() {
+		c.pipeline.fireExceptionInLoop(err)
+	})
 }

@@ -41,6 +41,9 @@ func (s *server) Stop() {
 }
 
 func (s *server) Start() error {
+	if err := s.opts.validate(); err != nil {
+		return err
+	}
 	if s.initializer == nil {
 		return errors.New("pipeline initializer not set")
 	}
@@ -96,7 +99,13 @@ func (s *server) acceptLoop() {
 		connID := generalConnID()
 		loop := s.workerGroup.Next(connID)
 		loop.Execute(func() {
-			c := NewConnection(connID, tcp, &s.opts, loop, s.connMgr, s.initializer)
+			connection, err2 := NewConnection(connID, tcp, &s.opts, loop, s.connMgr, s.initializer)
+			if err2 != nil {
+				btlog.Ins().Errorf("new connection error, connID:%v, remote:%v, err:%v", connID, tcp.RemoteAddr(), err2)
+				tcp.Close()
+				return
+			}
+			c := connection
 			s.connMgr.Add(c)
 			c.Start()
 		})

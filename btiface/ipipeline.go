@@ -26,9 +26,14 @@ type IHandlerContext interface {
 	FireWrite(msg interface{})
 	FireActive()
 	FireInactive()
+	FireException(err error)
 }
 
 type IActiveHandler interface {
 	OnActive(ctx IHandlerContext)
 	OnInactive(ctx IHandlerContext)
+}
+
+type IExceptionHandler interface {
+	OnException(ctx IHandlerContext, err error)
 }
