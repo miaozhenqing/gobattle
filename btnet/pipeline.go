@@ -60,3 +60,10 @@ func (p *Pipeline) addLast(executor btiface.IEventLoop, h interface{}) btiface.I
 	p.tail.prev = ctx
 	return p
 }
+
+func (p *Pipeline) fireActiveInLoop() {
+	p.head.FireActive()
+}
+func (p *Pipeline) fireInactiveInLoop() {
+	p.head.FireInactive()
+}

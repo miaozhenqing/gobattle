@@ -81,7 +81,7 @@ func (s *server) acceptLoop() {
 				return
 			}
 
-			// 其他,退避重试避免空转
+			// 其他,退避重试避免空转todo 后续可拆出来优化
 			if delay == 0 {
 				delay = minAcceptDelay
 			} else if delay *= 2; delay > maxAcceptDelay {

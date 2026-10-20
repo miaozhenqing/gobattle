@@ -24,6 +24,7 @@ func main() {
 	gdh.AddRouter(util.MessageIDPing, router.NewPingRouter())
 
 	s.SetPipelineInitializer(func(p btiface.IPipeline) {
+		p.AddLastGroup(biz, handler.NewSessionHandler())
 		p.AddLastGroup(biz, btnet.NewDispatchHandler(gdh))
 		p.AddLast(btnet.NewEncodeHandler(btnet.NewSerializer(cfg.MaxPacketSize)))
 	})

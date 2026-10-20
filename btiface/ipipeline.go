@@ -24,4 +24,11 @@ type IHandlerContext interface {
 	GetConnection() IConnection
 	FireRead(msg interface{})
 	FireWrite(msg interface{})
+	FireActive()
+	FireInactive()
+}
+
+type IActiveHandler interface {
+	OnActive(ctx IHandlerContext)
+	OnInactive(ctx IHandlerContext)
 }

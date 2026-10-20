@@ -48,7 +48,7 @@ func (el *EventLoop) run() {
 func (el *EventLoop) safeRun(task func()) {
 	defer func() {
 		if r := recover(); r != nil {
-			btlog.Ins().Errorf("eventloop panic, loop:%v err:%v\n%s", el.name, r, debug.Stack())
+			btlog.Ins().Errorf("eventloop panic, loop:%v err:%v  %s", el.name, r, debug.Stack())
 		}
 	}()
 	task()

@@ -61,6 +61,8 @@ func (c *Connection) GetID() int64 {
 func (c *Connection) Start() {
 	go c.startRead()
 	go c.startWrite()
+	//先active，再read
+	c.pipeline.fireActiveInLoop()
 }
 
 func (c *Connection) Stop() {
@@ -68,6 +70,7 @@ func (c *Connection) Stop() {
 		c.state.Store(connClosed)
 		c.cancelFunc()
 		c.destroy()
+		c.ioLoop.Execute(c.pipeline.fireInactiveInLoop)
 	})
 }
 
