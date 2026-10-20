@@ -36,6 +36,9 @@ type Connection struct {
 	flushChan    chan struct{}
 
 	ioLoop btiface.IEventLoop
+
+	attMu sync.RWMutex
+	attrs map[any]any
 }
 
 func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IEventLoop, connMgr btiface.IConnManager,
@@ -254,4 +257,26 @@ func (c *Connection) fireException(err error) {
 	c.ioLoop.Execute(func() {
 		c.pipeline.fireExceptionInLoop(err)
 	})
+}
+
+func (c *Connection) SetProperty(key any, value any) {
+	c.attMu.Lock()
+	defer c.attMu.Unlock()
+	if c.attrs == nil {
+		c.attrs = make(map[any]any)
+	}
+	c.attrs[key] = value
+}
+
+func (c *Connection) GetProperty(key any) (any, bool) {
+	c.attMu.RLock()
+	defer c.attMu.RUnlock()
+	v, ok := c.attrs[key]
+	return v, ok
+}
+
+func (c *Connection) RemoveProperty(key any) {
+	c.attMu.Lock()
+	defer c.attMu.Unlock()
+	delete(c.attrs, key)
 }

@@ -8,4 +8,8 @@ type IConnection interface {
 	Stop()
 	FlushAndStop()
 	IsClosed() bool
+
+	SetProperty(key, value any)
+	GetProperty(key any) (any, bool)
+	RemoveProperty(key any)
 }
