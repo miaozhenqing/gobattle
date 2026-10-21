@@ -1,6 +1,7 @@
 package btnet
 
 import (
+	"context"
 	"fmt"
 	"gobattle/btiface"
 )
@@ -23,4 +24,20 @@ func NewEventLoopGroup(name string, size int) *EventLoopGroup {
 
 func (g *EventLoopGroup) Next(key int64) btiface.IEventLoop {
 	return g.loops[uint64(key)%uint64(len(g.loops))]
+}
+
+func (g *EventLoopGroup) ShutdownGracefully(ctx context.Context) error {
+	//先通知loop停止，不再接收task
+	for _, loop := range g.loops {
+		loop.shutdown()
+	}
+	//逐个等待退出
+	for _, loop := range g.loops {
+		select {
+		case <-loop.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }

@@ -2,12 +2,17 @@ package btnet
 
 import (
 	"gobattle/btiface"
+	"iter"
+	"maps"
+	"slices"
 	"sync"
 )
 
 type ConnManager struct {
 	connections map[int64]btiface.IConnection
 	mu          sync.RWMutex
+	closed      bool
+	wg          sync.WaitGroup
 }
 
 func NewConnManager() *ConnManager {
@@ -16,11 +21,54 @@ func NewConnManager() *ConnManager {
 	}
 }
 
-func (cm *ConnManager) Add(conn btiface.IConnection) {
+func (cm *ConnManager) Add(conn btiface.IConnection) bool {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+	if cm.closed {
+		return false
+	}
+	cm.wg.Add(1)
 	cm.connections[conn.GetID()] = conn
+	return true
 }
+
+func (cm *ConnManager) done() {
+	cm.wg.Done()
+}
+
+func (cm *ConnManager) wait() {
+	cm.wg.Wait()
+}
+
+func (cm *ConnManager) Get(connId int64) (btiface.IConnection, bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	connection, ok := cm.connections[connId]
+	return connection, ok
+}
+
+func (cm *ConnManager) All() iter.Seq[btiface.IConnection] {
+	return func(yield func(btiface.IConnection) bool) {
+		for _, c := range cm.snapshot() {
+			if !yield(c) {
+				return
+			}
+		}
+	}
+}
+
+func (cm *ConnManager) Broadcast(msg uint32, data []byte) {
+	for c := range cm.All() {
+		c.SendMsg(msg, data)
+	}
+}
+
+func (cm *ConnManager) snapshot() []btiface.IConnection {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return slices.Collect(maps.Values(cm.connections))
+}
+
 func (cm *ConnManager) Remove(connId int64) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -32,16 +80,15 @@ func (cm *ConnManager) Len() int {
 	return len(cm.connections)
 }
 
-func (cm *ConnManager) CloseAll() {
-	// 防止stop是调用remove造成死锁，先拷出列表
-	cm.mu.RLock()
-	conns := make([]btiface.IConnection, 0, len(cm.connections))
-	for _, c := range cm.connections {
-		conns = append(conns, c)
-	}
-	cm.mu.RUnlock()
+func (cm *ConnManager) close() []btiface.IConnection {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.closed = true
+	return slices.Collect(maps.Values(cm.connections))
+}
 
-	for _, c := range conns {
+func (cm *ConnManager) CloseAll() {
+	for _, c := range cm.close() {
 		c.Stop()
 	}
 }

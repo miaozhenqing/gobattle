@@ -1,8 +1,10 @@
 package btiface
 
+import "iter"
+
 type IConnManager interface {
-	Add(conn IConnection)
-	Remove(connId int64)
+	Get(connID int64) (IConnection, bool)
 	Len() int
-	CloseAll()
+	All() iter.Seq[IConnection]
+	Broadcast(msgId uint32, data []byte)
 }

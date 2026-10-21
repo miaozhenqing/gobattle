@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"gobattle/btiface"
 	"gobattle/btlog"
 	"gobattle/btnet"
@@ -9,7 +10,10 @@ import (
 	"gobattle/router"
 	"gobattle/util"
 	"net"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -33,8 +37,24 @@ func main() {
 	if err != nil {
 		panic("server start error")
 	}
-	client := NewClient()
-	client.Test()
+
+	go NewClient().Test()
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-sigCtx.Done()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
+		btlog.Ins().Errorf("server shutdown error:%v", err)
+	}
+	// 连接全部结束后再关 loop，顺序：boss（accept 已退出）→ worker → biz
+	for _, g := range []*btnet.EventLoopGroup{boss, worker, biz} {
+		if err := g.ShutdownGracefully(ctx); err != nil {
+			btlog.Ins().Errorf("eventloop shutdown error:%v", err)
+		}
+	}
+
 }
 
 func serverOptions() btnet.Options {

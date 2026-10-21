@@ -27,7 +27,7 @@ type Connection struct {
 	opts         *Options
 	msgChan      chan []byte
 	frameDecoder btiface.IFrameDecoder
-	connMgr      btiface.IConnManager
+	connMgr      *ConnManager
 	cancelCtx    context.Context
 	cancelFunc   context.CancelFunc
 	pipeline     *Pipeline
@@ -39,9 +39,11 @@ type Connection struct {
 
 	attMu sync.RWMutex
 	attrs map[any]any
+
+	onInactiveDone func()
 }
 
-func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IEventLoop, connMgr btiface.IConnManager,
+func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IEventLoop, connMgr *ConnManager,
 	initializer btiface.PipelineInitializer) (*Connection, error) {
 	c := &Connection{
 		id:           id,
@@ -94,7 +96,9 @@ func (c *Connection) Stop() {
 
 func (c *Connection) FlushAndStop() {
 	if c.state.CompareAndSwap(connActive, connClosing) {
-		close(c.flushChan)
+		c.ioLoop.Execute(func() {
+			close(c.flushChan)
+		})
 	}
 }
 func (c *Connection) IsClosed() bool {
@@ -279,4 +283,10 @@ func (c *Connection) RemoveProperty(key any) {
 	c.attMu.Lock()
 	defer c.attMu.Unlock()
 	delete(c.attrs, key)
+}
+
+func (c *Connection) inactiveDone() {
+	if c.onInactiveDone != nil {
+		c.onInactiveDone()
+	}
 }

@@ -1,6 +1,7 @@
 package btnet
 
 import (
+	"context"
 	"errors"
 	"gobattle/btiface"
 	"gobattle/btlog"
@@ -12,7 +13,7 @@ import (
 
 type server struct {
 	opts        Options
-	connMgr     btiface.IConnManager
+	connMgr     *ConnManager
 	initializer btiface.PipelineInitializer
 	listener    *net.TCPListener
 	bossGroup   btiface.IEventLoopGroup
@@ -34,9 +35,7 @@ func (s *server) SetPipelineInitializer(fn btiface.PipelineInitializer) {
 }
 
 func (s *server) Stop() {
-	if s.listener != nil {
-		s.listener.Close()
-	}
+	s.closeListener()
 	s.connMgr.CloseAll()
 }
 
@@ -105,9 +104,14 @@ func (s *server) acceptLoop() {
 				tcp.Close()
 				return
 			}
-			c := connection
-			s.connMgr.Add(c)
-			c.Start()
+			connection.onInactiveDone = s.connMgr.done
+
+			if !s.connMgr.Add(connection) {
+				btlog.Ins().Infof("server closing, reject conn, connID:%v", connID)
+				tcp.Close()
+				return
+			}
+			connection.Start()
 		})
 	}
 }
@@ -116,4 +120,37 @@ var connIDCounter atomic.Int64
 
 func generalConnID() int64 {
 	return connIDCounter.Add(1)
+}
+
+func (s *server) closeListener() {
+	if s.listener != nil {
+		_ = s.listener.Close()
+	}
+}
+
+func (s *server) ConnManager() btiface.IConnManager {
+	return s.connMgr
+}
+func (s *server) Shutdown(ctx context.Context) error {
+	s.closeListener()
+	conns := s.connMgr.close()
+	for _, c := range conns {
+		c.FlushAndStop()
+	}
+	done := make(chan struct{})
+	go func() {
+		s.connMgr.wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		btlog.Ins().Errorf("shutdown timeout, force stop, conns:%v, maybe some OnInactive not propagated", len(conns))
+		for _, c := range conns {
+			c.Stop()
+		}
+		return ctx.Err()
+	}
+
 }

@@ -36,8 +36,17 @@ type tailHandler struct{}
 func (t *tailHandler) OnRead(ctx btiface.IHandlerContext, msg interface{}) {
 	btlog.Ins().Warnf("msg not handled, connID:%v type:%T", ctx.GetConnection().GetID(), msg)
 }
-func (t *tailHandler) OnActive(ctx btiface.IHandlerContext)   {}
-func (t *tailHandler) OnInactive(ctx btiface.IHandlerContext) {}
+
+type inactiveNotifier interface {
+	inactiveDone()
+}
+
+func (t *tailHandler) OnActive(ctx btiface.IHandlerContext) {}
+func (t *tailHandler) OnInactive(ctx btiface.IHandlerContext) {
+	if n, ok := ctx.GetConnection().(inactiveNotifier); ok {
+		n.inactiveDone()
+	}
+}
 
 // 没有 handler 处理的异常,打日志并关闭连接
 func (t *tailHandler) OnException(ctx btiface.IHandlerContext, err error) {
