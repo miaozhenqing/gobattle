@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"gobattle/btiface"
 	"gobattle/btlog"
 	"gobattle/btnet"
@@ -24,6 +25,11 @@ func main() {
 	s := btnet.NewServer(serverOptions(), boss, worker)
 
 	r := btrouter.NewRouter(btrouter.JSONCodec{})
+	r.Use(
+		btrouter.RateLimit(20, 40),
+		btrouter.Auth(func(ctx *btrouter.Context) bool { return true }, router.MsgPing), // 暂无登录协议，先全部放行
+		btrouter.SlowLog(50*time.Millisecond),
+	)
 	(&router.PingModule{}).Routes(r)
 
 	s.SetPipelineInitializer(func(p btiface.IPipeline) {
@@ -38,6 +44,14 @@ func main() {
 	}
 
 	go runClient()
+	go func() {
+		// 广播：整帧只编码一次
+		for range time.Tick(5 * time.Second) {
+			if err := r.Broadcast(s.ConnManager(), 50001, &router.PingResp{Text: "broadcast"}); err != nil {
+				btlog.Ins().Errorf("broadcast error:%v", err)
+			}
+		}
+	}()
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-sigCtx.Done()
@@ -95,6 +109,17 @@ func runClient() {
 		call(router.MsgPing, &router.PingReq{Text: "hello world"})
 		call(router.MsgPing, &router.PingReq{})
 		call(9999, nil)
+		// 限流，连续发 100 次
+		limited := 0
+		for range 100 {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			_, err := btrouter.Call[router.PingResp](ctx, c, router.MsgPing, &router.PingReq{Text: "flood"})
+			cancel()
+			if e, ok := errors.AsType[*btrouter.Error](err); ok && e.Code == btrouter.CodeResourceExhausted {
+				limited++
+			}
+		}
+		btlog.Ins().Infof("flood 100, limited:%v", limited)
 		time.Sleep(3 * time.Second)
 	}
 }

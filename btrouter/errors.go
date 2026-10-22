@@ -6,10 +6,12 @@ import (
 )
 
 const (
-	CodeOK              uint32 = 0
-	CodeInvalidArgument uint32 = 3
-	CodeUnimplemented   uint32 = 12
-	CodeInternal        uint32 = 13
+	CodeOK                uint32 = 0
+	CodeInvalidArgument   uint32 = 3
+	CodeResourceExhausted uint32 = 8
+	CodeUnimplemented     uint32 = 12
+	CodeInternal          uint32 = 13
+	CodeUnauthenticated   uint32 = 16
 )
 
 // todo 按照模块前缀分
@@ -50,7 +52,11 @@ func errInternal(cause error) *Error {
 	return &Error{Code: CodeInternal, Msg: "internal error", cause: cause}
 }
 
-var errUnimplemented = NewError(CodeUnimplemented, "unimplemented")
+var (
+	errUnimplemented     = NewError(CodeUnimplemented, "unimplemented")
+	errResourceExhausted = NewError(CodeResourceExhausted, "too many requests")
+	errUnauthenticated   = NewError(CodeUnauthenticated, "unauthenticated")
+)
 
 func truncate(s string, n int) string {
 	if len(s) <= n {

@@ -22,7 +22,7 @@ func (h *headHandler) OnWrite(ctx btiface.IHandlerContext, msg interface{}) {
 	switch m := msg.(type) {
 	case btiface.IFrame:
 		data = encodeFrame(m.GetFlags(), m.GetBody())
-	case []byte:
+	case []byte: // 已编码好的完整帧，只读，可能被多个连接共享，不能原地修改
 		data = m
 	default:
 		btlog.Ins().Errorf("msg must be IFrame or []byte, connID:%v type:%T", ctx.GetConnection().GetID(), msg)
