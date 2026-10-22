@@ -14,10 +14,10 @@ func NewDispatchHandler(d btiface.IDispatcher) *DispatchHandler {
 }
 
 func (h *DispatchHandler) OnRead(ctx btiface.IHandlerContext, msg interface{}) {
-	m, ok := msg.(btiface.IMessage)
+	env, ok := msg.(*btiface.Envelope)
 	if !ok {
 		ctx.FireRead(msg)
 		return
 	}
-	h.d.Dispatch(NewRequest(ctx.GetConnection(), m))
+	h.d.Dispatch(ctx.GetConnection(), env)
 }

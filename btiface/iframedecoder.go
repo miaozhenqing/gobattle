@@ -1,5 +1,5 @@
 package btiface
 
 type IFrameDecoder interface {
-	Decode(b []byte) ([]IMessage, error)
+	Decode(b []byte) ([]IFrame, error)
 }

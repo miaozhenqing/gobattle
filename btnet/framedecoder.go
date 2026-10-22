@@ -5,13 +5,6 @@ import (
 	"gobattle/btiface"
 )
 
-/*
-┌────────┬──────────┬──────────────┐
-│ msgId  │ dataLen  │ data         │
-│ 4 byte │ 4 byte   │ dataLen byte │
-└────────┴──────────┴──────────────┘
-*/
-
 var ErrFrameTooLarge = errors.New("frame too large")
 
 type FrameDecoder struct {
@@ -26,7 +19,7 @@ func NewFrameDecoder(maxFrameSize, initBufSize int) *FrameDecoder {
 	}
 }
 
-func (d *FrameDecoder) Decode(b []byte) ([]btiface.IMessage, error) {
+func (d *FrameDecoder) Decode(b []byte) ([]btiface.IFrame, error) {
 	if len(b) == 0 {
 		return nil, nil
 	}
@@ -39,11 +32,11 @@ func (d *FrameDecoder) Decode(b []byte) ([]btiface.IMessage, error) {
 		data = d.buffer
 	}
 
-	var msgs []btiface.IMessage
+	var frames []btiface.IFrame
 	off := 0
 	for len(data)-off >= headerSize {
-		header, err := decodeFrameHeader(data[off:])
-		if err != nil {
+		header := decodeFrameHeader(data[off:])
+		if err := checkFlags(header.Flags); err != nil {
 			return nil, err
 		}
 		totalLen, err := frameLen(header, d.maxFrameSize)
@@ -53,14 +46,13 @@ func (d *FrameDecoder) Decode(b []byte) ([]btiface.IMessage, error) {
 		if len(data)-off < totalLen {
 			break
 		}
-
-		payload := make([]byte, header.DataLen)
-		copy(payload, data[off+headerSize:off+totalLen])
-		msgs = append(msgs, NewMessage(header.MessageID, payload))
+		body := make([]byte, header.BodyLen)
+		copy(body, data[off+headerSize:off+totalLen])
+		frames = append(frames, NewFrame(header.Flags, body))
 		off += totalLen
 	}
 
 	// 剩余半包挪到 buffer 头部
 	d.buffer = append(d.buffer[:0], data[off:]...)
-	return msgs, nil
+	return frames, nil
 }

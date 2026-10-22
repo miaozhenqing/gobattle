@@ -57,9 +57,11 @@ func (cm *ConnManager) All() iter.Seq[btiface.IConnection] {
 	}
 }
 
-func (cm *ConnManager) Broadcast(msg uint32, data []byte) {
+func (cm *ConnManager) Broadcast(msgId uint32, data []byte) {
+	// 信封只读，所有连接共享同一个
+	env := &btiface.Envelope{Type: btiface.MsgTypePush, MsgId: msgId, Payload: data}
 	for c := range cm.All() {
-		c.SendMsg(msg, data)
+		_ = c.Send(env) // 已关闭返回 ErrConnClosed，忽略
 	}
 }
 

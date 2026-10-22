@@ -110,12 +110,16 @@ func (c *Connection) destroy() {
 	c.connMgr.Remove(c.GetID())
 }
 
-func (c *Connection) SendMsg(msgId uint32, data []byte) error {
+func (c *Connection) Send(env *btiface.Envelope) error {
 	if c.IsClosed() {
 		return ErrConnClosed
 	}
-	c.pipeline.FireWrite(NewMessage(msgId, data))
+	c.pipeline.FireWrite(env)
 	return nil
+}
+
+func (c *Connection) Context() context.Context {
+	return c.cancelCtx
 }
 
 func (c *Connection) writeRaw(data []byte) {
@@ -162,22 +166,22 @@ func (c *Connection) startRead() {
 			continue
 		}
 		//解包
-		msgs, err := c.frameDecoder.Decode(buf[:size])
+		frames, err := c.frameDecoder.Decode(buf[:size])
 		if err != nil {
 			c.fireException(err)
 			return
 		}
-		if len(msgs) == 0 {
+		if len(frames) == 0 {
 			continue
 		}
 		activeAt = time.Now()
 		//解码
 		c.ioLoop.Execute(func() {
-			for _, m := range msgs {
+			for _, f := range frames {
 				if c.IsClosed() {
 					return
 				}
-				c.pipeline.fireReadInLoop(m)
+				c.pipeline.fireReadInLoop(f)
 			}
 		})
 	}

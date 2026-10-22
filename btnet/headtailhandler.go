@@ -18,9 +18,14 @@ type rawWriter interface {
 type headHandler struct{}
 
 func (h *headHandler) OnWrite(ctx btiface.IHandlerContext, msg interface{}) {
-	data, ok := msg.([]byte)
-	if !ok {
-		btlog.Ins().Errorf("msg must be []byte, connID:%v type:%T", ctx.GetConnection().GetID(), msg)
+	var data []byte
+	switch m := msg.(type) {
+	case btiface.IFrame:
+		data = encodeFrame(m.GetFlags(), m.GetBody())
+	case []byte:
+		data = m
+	default:
+		btlog.Ins().Errorf("msg must be IFrame or []byte, connID:%v type:%T", ctx.GetConnection().GetID(), msg)
 		return
 	}
 	w, ok := ctx.GetConnection().(rawWriter)

@@ -1,5 +1,5 @@
 package btiface
 
 type IDispatcher interface {
-	Dispatch(req IRequest)
+	Dispatch(conn IConnection, env *Envelope)
 }

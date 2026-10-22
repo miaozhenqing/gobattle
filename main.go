@@ -5,11 +5,10 @@ import (
 	"gobattle/btiface"
 	"gobattle/btlog"
 	"gobattle/btnet"
+	"gobattle/btrouter"
 	"gobattle/config"
 	"gobattle/handler"
 	"gobattle/router"
-	"gobattle/util"
-	"net"
 	"os"
 	"os/signal"
 	"strconv"
@@ -24,13 +23,13 @@ func main() {
 	biz := btnet.NewEventLoopGroup("biz", cfg.BizLoopSize)
 	s := btnet.NewServer(serverOptions(), boss, worker)
 
-	gdh := handler.NewGameDispatcher()
-	gdh.AddRouter(util.MessageIDPing, router.NewPingRouter())
+	r := btrouter.NewRouter(btrouter.JSONCodec{})
+	(&router.PingModule{}).Routes(r)
 
 	s.SetPipelineInitializer(func(p btiface.IPipeline) {
+		p.AddLast(btnet.NewEnvelopeCodec())
 		p.AddLastGroup(biz, handler.NewSessionHandler())
-		p.AddLastGroup(biz, btnet.NewDispatchHandler(gdh))
-		p.AddLast(btnet.NewEncodeHandler(btnet.NewSerializer(cfg.MaxPacketSize)))
+		p.AddLastGroup(biz, btnet.NewDispatchHandler(r))
 	})
 
 	err := s.Start()
@@ -38,7 +37,7 @@ func main() {
 		panic("server start error")
 	}
 
-	go NewClient().Test()
+	go runClient()
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-sigCtx.Done()
@@ -74,40 +73,28 @@ func serverOptions() btnet.Options {
 	return opts
 }
 
-type Client struct {
-}
-
-func NewClient() *Client {
-	return &Client{}
-}
-func (c *Client) Test() {
-	resolveTCPAddr, _ := net.ResolveTCPAddr("tcp", config.ServerConfig.Host+":"+strconv.Itoa(config.ServerConfig.TcpPort))
-
-	conn, err := net.DialTCP("tcp", nil, resolveTCPAddr)
+func runClient() {
+	cfg := config.ServerConfig
+	addr := cfg.Host + ":" + strconv.Itoa(cfg.TcpPort)
+	c, err := btrouter.Dial(addr, cfg.MaxPacketSize, btrouter.JSONCodec{}, func(msgId uint32, data []byte) {
+		btlog.Ins().Infof("push msgId:%v data:%s", msgId, data)
+	})
 	if err != nil {
-		panic(err)
+		btlog.Ins().Errorf("dial error:%v", err)
+		return
 	}
-	serializer := btnet.NewSerializer(config.ServerConfig.MaxPacketSize)
+	defer c.Close()
+
+	call := func(msgId uint32, req any) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		resp, err := btrouter.Call[router.PingResp](ctx, c, msgId, req)
+		btlog.Ins().Infof("call msgId:%v resp:%+v err:%v", msgId, resp, err)
+	}
 	for {
-		s := "hello world"
-		message := btnet.NewMessage(util.MessageIDPing, []byte(s))
-
-		buf := serializer.Serialize(message)
-
-		conn.Write(buf)
-
-		// 接收返回值
-		response := make([]byte, 1024)
-
-		n, err := conn.Read(response)
-		if err != nil {
-			btlog.Ins().Errorf("read error:%v", err)
-			return
-		}
-		deserialize, err := serializer.Deserialize(response[:n])
-		btlog.Ins().Info("receive:", string(deserialize.GetData()))
-
-		time.Sleep(time.Second * 3)
+		call(router.MsgPing, &router.PingReq{Text: "hello world"})
+		call(router.MsgPing, &router.PingReq{})
+		call(9999, nil)
+		time.Sleep(3 * time.Second)
 	}
-
 }

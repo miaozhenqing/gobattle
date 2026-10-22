@@ -1,8 +1,9 @@
 package btiface
 
+import "context"
+
 type IConnection interface {
 	GetID() int64
-	SendMsg(msgId uint32, data []byte) error
 	GetPipeline() IPipeline
 	EventLoop() IEventLoop
 	Stop()
@@ -12,4 +13,8 @@ type IConnection interface {
 	SetProperty(key, value any)
 	GetProperty(key any) (any, bool)
 	RemoveProperty(key any)
+
+	Send(env *Envelope) error
+
+	Context() context.Context
 }
