@@ -14,12 +14,6 @@ const (
 	MsgTypePush     MsgType = 3
 )
 
-// todo 按照模块前缀分
-const (
-	MinRequestMsgId uint32 = 1000
-	MinPushMsgId    uint32 = 50000
-)
-
 type Envelope struct {
 	Type    MsgType
 	Seq     uint32

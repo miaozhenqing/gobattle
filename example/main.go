@@ -9,6 +9,7 @@ import (
 	"gobattle/example/config"
 	"gobattle/example/handler"
 	"gobattle/example/module"
+	"gobattle/example/proto"
 	"os"
 	"os/signal"
 	"strconv"
@@ -26,10 +27,10 @@ func main() {
 	r := btrouter.NewRouter(btrouter.JSONCodec{})
 	r.AddInterceptor(
 		btrouter.RateLimit(20, 40),
-		btrouter.Auth(func(ctx *btrouter.Context) bool { return true }, module.MsgPing),
+		btrouter.Auth(func(ctx *btrouter.RequestContext) bool { return true }), // 暂无登录协议，先全部放行
 		btrouter.SlowLog(50*time.Millisecond),
 	)
-	(&module.PingModule{}).Routes(r)
+	r.RegisterModules(&module.PingModule{})
 
 	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
@@ -46,7 +47,7 @@ func main() {
 	go func() {
 		// 广播：整帧只编码一次
 		for range time.Tick(5 * time.Second) {
-			if err := r.Broadcast(s.ConnManager(), 50001, &module.PingResp{Text: "broadcast"}); err != nil {
+			if err := r.Broadcast(s.ConnManager(), proto.PushBroadcast, &proto.PingResp{Text: "broadcast"}); err != nil {
 				btlog.Ins().Errorf("broadcast error:%v", err)
 			}
 		}
@@ -84,20 +85,20 @@ func runClient() {
 	call := func(msgId uint32, req any) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		resp, err := btrouter.Call[module.PingResp](ctx, c, msgId, req)
+		resp, err := btrouter.Call[proto.PingResp](ctx, c, msgId, req)
 		btlog.Ins().Infof("call msgId:%v resp:%+v err:%v", msgId, resp, err)
 	}
 	for {
-		call(module.MsgPing, &module.PingReq{Text: "hello world"})
-		call(module.MsgPing, &module.PingReq{})
+		call(proto.MsgPing, &proto.PingReq{Text: "hello world"})
+		call(proto.MsgPing, &proto.PingReq{})
 		call(9999, nil)
 		// 限流，连续发 100 次
 		limited := 0
 		for range 100 {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			_, err := btrouter.Call[module.PingResp](ctx, c, module.MsgPing, &module.PingReq{Text: "flood"})
+			_, err := btrouter.Call[proto.PingResp](ctx, c, proto.MsgPing, &proto.PingReq{Text: "flood"})
 			cancel()
-			if e, ok := errors.AsType[*btrouter.Error](err); ok && e.Code == btrouter.CodeResourceExhausted {
+			if errors.Is(err, btrouter.CodeResourceExhausted) {
 				limited++
 			}
 		}

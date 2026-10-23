@@ -97,8 +97,8 @@ func (c *Client) roundTrip(ctx context.Context, msgId uint32, req any) ([]byte, 
 
 	select {
 	case env := <-ch:
-		if env.Code != CodeOK {
-			return nil, &Error{Code: env.Code, Msg: string(env.Payload)}
+		if Code(env.Code) != CodeOK {
+			return nil, Code(env.Code)
 		}
 		return env.Payload, nil
 	case <-ctx.Done():

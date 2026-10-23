@@ -6,22 +6,22 @@ import (
 	"time"
 )
 
-type Context struct {
+type RequestContext struct {
 	context.Context
 	conn    *btnet.Connection
 	msgId   uint32
-	method  string
+	route   *route
 	startAt time.Time // dispatch 收到请求的时间
 }
 
-func (c *Context) Conn() *btnet.Connection {
+func (c *RequestContext) Conn() *btnet.Connection {
 	return c.conn
 }
 
-func (c *Context) MsgId() uint32 {
+func (c *RequestContext) MsgId() uint32 {
 	return c.msgId
 }
 
-func (c *Context) Method() string {
-	return c.method
+func (c *RequestContext) Method() string {
+	return c.route.method
 }
