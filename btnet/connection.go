@@ -3,7 +3,6 @@ package btnet
 import (
 	"context"
 	"errors"
-	"gobattle/btiface"
 	"gobattle/btlog"
 	"io"
 	"net"
@@ -12,8 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 )
-
-var ErrConnClosed = errors.New("conn is closed")
 
 const (
 	connActive int32 = iota
@@ -26,7 +23,7 @@ type Connection struct {
 	conn         *net.TCPConn
 	opts         *Options
 	msgChan      chan []byte
-	frameDecoder btiface.IFrameDecoder
+	frameDecoder *FrameDecoder
 	connMgr      *ConnManager
 	cancelCtx    context.Context
 	cancelFunc   context.CancelFunc
@@ -35,7 +32,7 @@ type Connection struct {
 	state        atomic.Int32
 	flushChan    chan struct{}
 
-	ioLoop btiface.IEventLoop
+	ioLoop *EventLoop
 
 	attMu sync.RWMutex
 	attrs map[any]any
@@ -43,8 +40,8 @@ type Connection struct {
 	onInactiveDone func()
 }
 
-func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IEventLoop, connMgr *ConnManager,
-	initializer btiface.PipelineInitializer) (*Connection, error) {
+func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop *EventLoop, connMgr *ConnManager,
+	initializer PipelineInitializer) (*Connection, error) {
 	c := &Connection{
 		id:           id,
 		conn:         conn,
@@ -56,7 +53,7 @@ func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IE
 		flushChan:    make(chan struct{}),
 	}
 	c.cancelCtx, c.cancelFunc = context.WithCancel(context.Background())
-	p := NewPipeline(c, ioLoop)
+	p := newPipeline(c, ioLoop)
 	if err := runInitializer(initializer, p); err != nil {
 		c.cancelFunc()
 		return nil, err
@@ -65,7 +62,7 @@ func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop btiface.IE
 	return c, nil
 }
 
-func runInitializer(init btiface.PipelineInitializer, p *Pipeline) (err error) {
+func runInitializer(init PipelineInitializer, p *Pipeline) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = &PanicError{Value: r, Stack: debug.Stack()}
@@ -110,11 +107,11 @@ func (c *Connection) destroy() {
 	c.connMgr.Remove(c.GetID())
 }
 
-func (c *Connection) Send(env *btiface.Envelope) error {
+func (c *Connection) Write(msg any) error {
 	if c.IsClosed() {
 		return ErrConnClosed
 	}
-	c.pipeline.FireWrite(env)
+	c.pipeline.FireWrite(msg)
 	return nil
 }
 
@@ -253,11 +250,11 @@ func (c *Connection) write(data []byte) error {
 	return c.writeWithDeadline(data, deadline)
 }
 
-func (c *Connection) EventLoop() btiface.IEventLoop {
+func (c *Connection) EventLoop() *EventLoop {
 	return c.ioLoop
 }
 
-func (c *Connection) GetPipeline() btiface.IPipeline {
+func (c *Connection) GetPipeline() *Pipeline {
 	return c.pipeline
 }
 
@@ -265,28 +262,6 @@ func (c *Connection) fireException(err error) {
 	c.ioLoop.Execute(func() {
 		c.pipeline.fireExceptionInLoop(err)
 	})
-}
-
-func (c *Connection) SetProperty(key any, value any) {
-	c.attMu.Lock()
-	defer c.attMu.Unlock()
-	if c.attrs == nil {
-		c.attrs = make(map[any]any)
-	}
-	c.attrs[key] = value
-}
-
-func (c *Connection) GetProperty(key any) (any, bool) {
-	c.attMu.RLock()
-	defer c.attMu.RUnlock()
-	v, ok := c.attrs[key]
-	return v, ok
-}
-
-func (c *Connection) RemoveProperty(key any) {
-	c.attMu.Lock()
-	defer c.attMu.Unlock()
-	delete(c.attrs, key)
 }
 
 func (c *Connection) inactiveDone() {

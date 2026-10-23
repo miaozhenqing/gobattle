@@ -3,36 +3,31 @@ package btrouter
 import (
 	"errors"
 	"fmt"
-	"gobattle/btiface"
 	"gobattle/btlog"
+	"gobattle/btnet"
 	"reflect"
 	"runtime"
 	"runtime/debug"
 	"strings"
-	"sync"
 	"sync/atomic"
+	"time"
 )
 
-var _ btiface.IDispatcher = (*Router)(nil)
+var _ btnet.InHandler = (*Router)(nil)
 
-type Handler func(ctx *Context, req any) (resp any, err error)
-
-type Middleware func(ctx *Context, req any, next Handler) (resp any, err error)
+type handler func(ctx *Context, req any) (resp any, err error)
 
 type route struct {
 	method string
 	decode func(payload []byte) (any, error)
-	call   Handler // 业务方法
-	h      Handler // 冻结时组装
-	oneway bool
+	call   handler // 业务方法
 }
 
 type Router struct {
-	codec  Codec
-	routes map[uint32]*route
-	mws    []Middleware
-	frozen atomic.Bool
-	once   sync.Once
+	codec        Codec
+	routes       map[uint32]*route
+	interceptors []Interceptor
+	frozen       atomic.Bool
 }
 
 func NewRouter(codec Codec) *Router {
@@ -42,25 +37,23 @@ func NewRouter(codec Codec) *Router {
 	return &Router{codec: codec, routes: make(map[uint32]*route)}
 }
 
-func Register[Req, Resp any](r *Router, msgId uint32, fn func(*Context, *Req) (*Resp, error)) {
+func (r *Router) AddInterceptor(its ...Interceptor) {
+	if r.frozen.Load() {
+		panic("use interceptor after dispatch started")
+	}
+	r.interceptors = append(r.interceptors, its...)
+}
+
+func Register[Req any, Resp any](r *Router, msgId uint32, fn func(*Context, *Req) (*Resp, error)) {
 	if fn == nil {
 		panic(fmt.Sprintf("handler of msgId %d is nil", msgId))
 	}
-	r.add(msgId, fn, false, decoder[Req](r), func(ctx *Context, req any) (any, error) {
+	r.add(msgId, fn, decoder[Req](r), func(ctx *Context, req any) (any, error) {
 		resp, err := fn(ctx, req.(*Req))
 		if resp == nil {
 			return nil, err
 		}
 		return resp, err
-	})
-}
-
-func RegisterOneway[Req any](r *Router, msgId uint32, fn func(*Context, *Req) error) {
-	if fn == nil {
-		panic(fmt.Sprintf("handler of msgId %d is nil", msgId))
-	}
-	r.add(msgId, fn, true, decoder[Req](r), func(ctx *Context, req any) (any, error) {
-		return nil, fn(ctx, req.(*Req))
 	})
 }
 
@@ -84,7 +77,7 @@ func (r *Router) unmarshal(payload []byte, req any) error {
 	return nil
 }
 
-func (r *Router) add(msgId uint32, fn any, oneway bool, decode func([]byte) (any, error), call Handler) {
+func (r *Router) add(msgId uint32, fn any, decode func([]byte) (any, error), call handler) {
 	if r.frozen.Load() {
 		panic(fmt.Sprintf("register msgId %d after dispatch started", msgId))
 	}
@@ -94,38 +87,13 @@ func (r *Router) add(msgId uint32, fn any, oneway bool, decode func([]byte) (any
 	if old, ok := r.routes[msgId]; ok {
 		panic(fmt.Sprintf("msgId %d already registered by %s", msgId, old.method))
 	}
-	r.routes[msgId] = &route{method: funcName(fn), decode: decode, call: call, oneway: oneway}
-}
-
-func (r *Router) Use(mws ...Middleware) {
-	if r.frozen.Load() {
-		panic("use middleware after dispatch started")
-	}
-	for _, mw := range mws {
-		if mw == nil {
-			panic("middleware is nil")
-		}
-	}
-	r.mws = append(r.mws, mws...)
+	r.routes[msgId] = &route{method: funcName(fn), decode: decode, call: call}
 }
 
 func (r *Router) freeze() {
-	r.once.Do(func() {
+	if !r.frozen.Load() {
 		r.frozen.Store(true)
-		for _, rt := range r.routes {
-			rt.h = chain(r.mws, rt.call)
-		}
-	})
-}
-
-func chain(mws []Middleware, h Handler) Handler {
-	for i := len(mws) - 1; i >= 0; i-- {
-		mw, next := mws[i], h
-		h = func(ctx *Context, req any) (any, error) {
-			return mw(ctx, req, next)
-		}
 	}
-	return h
 }
 
 func funcName(fn any) string {
@@ -133,9 +101,18 @@ func funcName(fn any) string {
 	return strings.TrimSuffix(name, "-fm")
 }
 
-func (r *Router) Dispatch(conn btiface.IConnection, env *btiface.Envelope) {
+func (r *Router) OnRead(ctx *btnet.HandlerContext, msg any) {
+	env, ok := msg.(*Envelope)
+	if !ok {
+		ctx.FireRead(msg)
+		return
+	}
+	r.dispatch(ctx.GetConnection(), env)
+}
+
+func (r *Router) dispatch(conn *btnet.Connection, env *Envelope) {
 	r.freeze()
-	if env.Type != btiface.MsgTypeRequest {
+	if env.Type != MsgTypeRequest {
 		btlog.Ins().Warnf("unexpected msg type, connID:%v type:%v msgId:%v", conn.GetID(), env.Type, env.MsgId)
 		return
 	}
@@ -143,37 +120,58 @@ func (r *Router) Dispatch(conn btiface.IConnection, env *btiface.Envelope) {
 	rt := r.routes[env.MsgId]
 	if rt == nil {
 		btlog.Ins().Warnf("no route, connID:%v msgId:%v", conn.GetID(), env.MsgId)
-		r.reply(conn, env, nil, errUnimplemented, false)
+		r.reply(conn, env, nil, errUnimplemented)
 		return
 	}
 
-	ctx := &Context{Context: conn.Context(), conn: conn, msgId: env.MsgId, method: rt.method}
+	ctx := &Context{Context: conn.Context(), conn: conn, msgId: env.MsgId, method: rt.method, startAt: time.Now()}
 	resp, err := r.invoke(ctx, rt, env.Payload)
-	r.reply(conn, env, resp, err, rt.oneway)
+	r.reply(conn, env, resp, err)
 }
 
 func (r *Router) invoke(ctx *Context, rt *route, payload []byte) (resp any, err error) {
-	defer func() {
-		if p := recover(); p != nil {
-			btlog.Ins().Errorf("handler panic, connID:%v msgId:%v(%s) err:%v\n%s",
-				ctx.conn.GetID(), ctx.msgId, rt.method, p, debug.Stack())
-			resp, err = nil, errInternal(nil)
-		}
-	}()
+	defer r.recoverPanic(ctx, rt, &resp, &err)
 	req, err := rt.decode(payload)
 	if err != nil {
 		return nil, err
 	}
-	return rt.h(ctx, req)
+
+	n := 0
+	for ; n < len(r.interceptors); n++ {
+		if err = r.interceptors[n].Before(ctx, req); err != nil {
+			break
+		}
+	}
+	if err == nil {
+		resp, err = r.call(ctx, rt, req)
+	}
+	for i := n - 1; i >= 0; i-- {
+		r.interceptors[i].After(ctx, req, resp, err)
+	}
+	return resp, err
 }
 
-func (r *Router) reply(conn btiface.IConnection, req *btiface.Envelope, resp any, err error, oneway bool) {
+func (r *Router) call(ctx *Context, rt *route, req any) (resp any, err error) {
+	defer r.recoverPanic(ctx, rt, &resp, &err)
+	return rt.call(ctx, req)
+}
+
+func (r *Router) recoverPanic(ctx *Context, rt *route, resp *any, err *error) {
+	if p := recover(); p != nil {
+		btlog.Ins().Errorf("handler panic, connID:%v msgId:%v(%s) err:%v\n%s",
+			ctx.conn.GetID(), ctx.msgId, rt.method, p, debug.Stack())
+		*resp, *err = nil, errInternal(nil)
+	}
+}
+
+func (r *Router) reply(conn *btnet.Connection, req *Envelope, resp any, err error) {
 	e := r.toError(conn, req, err)
-	if oneway || req.Seq == 0 {
+	if req.Seq == 0 { // 客户端不等结果，不回包
+
 		return
 	}
 
-	out := &btiface.Envelope{Type: btiface.MsgTypeResponse, Seq: req.Seq, MsgId: req.MsgId}
+	out := &Envelope{Type: MsgTypeResponse, Seq: req.Seq, MsgId: req.MsgId}
 	if e != nil {
 		out.Code, out.Payload = e.Code, []byte(truncate(e.Msg, maxErrMsgLen))
 	} else if resp != nil {
@@ -186,10 +184,10 @@ func (r *Router) reply(conn btiface.IConnection, req *btiface.Envelope, resp any
 			out.Payload = b
 		}
 	}
-	_ = conn.Send(out)
+	_ = conn.Write(out)
 }
 
-func (r *Router) toError(conn btiface.IConnection, env *btiface.Envelope, err error) *Error {
+func (r *Router) toError(conn *btnet.Connection, env *Envelope, err error) *Error {
 	if err == nil {
 		return nil
 	}
@@ -206,27 +204,28 @@ func (r *Router) toError(conn btiface.IConnection, env *btiface.Envelope, err er
 		}
 	case CodeInvalidArgument:
 		btlog.Ins().Warnf("invalid argument, connID:%v msgId:%v err:%v", connID, msgId, e)
-	case CodeUnimplemented: // Dispatch 已打过 Warn
+	case CodeUnimplemented: // dispatch 已打过 Warn
 	default:
 		btlog.Ins().Debugf("biz error, connID:%v msgId:%v err:%v", connID, msgId, e)
 	}
 	return e
 }
 
-func (r *Router) Push(conn btiface.IConnection, msgId uint32, v any) error {
+func (r *Router) Push(conn *btnet.Connection, msgId uint32, v any) error {
 	data, err := r.marshalPush(msgId, v)
 	if err != nil {
 		return err
 	}
-	return conn.Send(&btiface.Envelope{Type: btiface.MsgTypePush, MsgId: msgId, Payload: data})
+	return conn.Write(&Envelope{Type: MsgTypePush, MsgId: msgId, Payload: data})
 }
 
-func (r *Router) Broadcast(mgr btiface.IConnManager, msgId uint32, v any) error {
+func (r *Router) Broadcast(mgr *btnet.ConnManager, msgId uint32, v any) error {
 	data, err := r.marshalPush(msgId, v)
 	if err != nil {
 		return err
 	}
-	mgr.Broadcast(msgId, data)
+	// 整帧只编码一次，所有连接共享
+	mgr.Broadcast(encodeEnvelope(&Envelope{Type: MsgTypePush, MsgId: msgId, Payload: data}))
 	return nil
 }
 

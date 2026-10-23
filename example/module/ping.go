@@ -1,4 +1,4 @@
-package router
+package module
 
 import (
 	"gobattle/btrouter"

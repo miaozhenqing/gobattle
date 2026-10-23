@@ -1,6 +1,7 @@
 package btrouter
 
 import (
+	"errors"
 	"fmt"
 	"unicode/utf8"
 )
@@ -14,13 +15,12 @@ const (
 	CodeUnauthenticated   uint32 = 16
 )
 
-// todo 按照模块前缀分
-const (
-	MinRequestMsgId uint32 = 1000
-	MinPushMsgId    uint32 = 50000
-)
-
 const maxErrMsgLen = 256
+
+var (
+	ErrClientClosed    = errors.New("client closed")
+	ErrInvalidEnvelope = errors.New("invalid envelope")
+)
 
 // Error 业务错误
 type Error struct {

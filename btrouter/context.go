@@ -2,17 +2,19 @@ package btrouter
 
 import (
 	"context"
-	"gobattle/btiface"
+	"gobattle/btnet"
+	"time"
 )
 
 type Context struct {
 	context.Context
-	conn   btiface.IConnection
-	msgId  uint32
-	method string
+	conn    *btnet.Connection
+	msgId   uint32
+	method  string
+	startAt time.Time // dispatch 收到请求的时间
 }
 
-func (c *Context) Conn() btiface.IConnection {
+func (c *Context) Conn() *btnet.Connection {
 	return c.conn
 }
 

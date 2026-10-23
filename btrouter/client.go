@@ -2,15 +2,11 @@ package btrouter
 
 import (
 	"context"
-	"errors"
-	"gobattle/btiface"
 	"gobattle/btnet"
 	"net"
 	"sync"
 	"sync/atomic"
 )
-
-var ErrClientClosed = errors.New("client closed")
 
 const clientReadBufSize = 4096
 
@@ -24,7 +20,7 @@ type Client struct {
 	writeMu sync.Mutex
 
 	mu      sync.Mutex
-	pending map[uint32]chan *btiface.Envelope
+	pending map[uint32]chan *Envelope
 
 	closeOnce sync.Once
 	done      chan struct{}
@@ -43,7 +39,7 @@ func Dial(addr string, maxFrameSize int, codec Codec, onPush func(msgId uint32, 
 		codec:   codec,
 		decoder: btnet.NewFrameDecoder(maxFrameSize, clientReadBufSize),
 		onPush:  onPush,
-		pending: make(map[uint32]chan *btiface.Envelope),
+		pending: make(map[uint32]chan *Envelope),
 		done:    make(chan struct{}),
 	}
 	go c.readLoop()
@@ -69,7 +65,7 @@ func (c *Client) Notify(msgId uint32, req any) error {
 	if err != nil {
 		return err
 	}
-	return c.write(&btiface.Envelope{Type: btiface.MsgTypeRequest, MsgId: msgId, Payload: payload})
+	return c.write(&Envelope{Type: MsgTypeRequest, MsgId: msgId, Payload: payload})
 }
 
 func (c *Client) Close() error {
@@ -85,7 +81,7 @@ func (c *Client) roundTrip(ctx context.Context, msgId uint32, req any) ([]byte, 
 	}
 
 	seq := c.nextSeq()
-	ch := make(chan *btiface.Envelope, 1)
+	ch := make(chan *Envelope, 1)
 	c.mu.Lock()
 	c.pending[seq] = ch
 	c.mu.Unlock()
@@ -95,7 +91,7 @@ func (c *Client) roundTrip(ctx context.Context, msgId uint32, req any) ([]byte, 
 		c.mu.Unlock()
 	}()
 
-	if err := c.write(&btiface.Envelope{Type: btiface.MsgTypeRequest, Seq: seq, MsgId: msgId, Payload: payload}); err != nil {
+	if err := c.write(&Envelope{Type: MsgTypeRequest, Seq: seq, MsgId: msgId, Payload: payload}); err != nil {
 		return nil, err
 	}
 
@@ -127,13 +123,13 @@ func (c *Client) marshal(req any) ([]byte, error) {
 	return c.codec.Marshal(req)
 }
 
-func (c *Client) write(env *btiface.Envelope) error {
+func (c *Client) write(env *Envelope) error {
 	select {
 	case <-c.done:
 		return ErrClientClosed
 	default:
 	}
-	data := btnet.EncodeEnvelope(env)
+	data := encodeEnvelope(env)
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	_, err := c.conn.Write(data)
@@ -153,7 +149,7 @@ func (c *Client) readLoop() {
 			return
 		}
 		for _, f := range frames {
-			env, err := btnet.DecodeEnvelope(f)
+			env, err := decodeEnvelope(f.Body)
 			if err != nil {
 				return
 			}
@@ -162,16 +158,16 @@ func (c *Client) readLoop() {
 	}
 }
 
-func (c *Client) deliver(env *btiface.Envelope) {
+func (c *Client) deliver(env *Envelope) {
 	switch env.Type {
-	case btiface.MsgTypeResponse:
+	case MsgTypeResponse:
 		c.mu.Lock()
 		ch := c.pending[env.Seq]
 		c.mu.Unlock()
 		if ch != nil {
 			ch <- env
 		}
-	case btiface.MsgTypePush:
+	case MsgTypePush:
 		if c.onPush != nil {
 			c.onPush(env.MsgId, env.Payload)
 		}

@@ -2,7 +2,6 @@ package btnet
 
 import (
 	"fmt"
-	"gobattle/btiface"
 	"gobattle/btlog"
 	"runtime/debug"
 )
@@ -17,33 +16,33 @@ const (
 type HandlerContext struct {
 	prev             *HandlerContext
 	next             *HandlerContext
-	inHandler        btiface.IInHandler
-	outHandler       btiface.IOutHandler
-	activeHandler    btiface.IActiveHandler
-	exceptionHandler btiface.IExceptionHandler
+	inHandler        InHandler
+	outHandler       OutHandler
+	activeHandler    ActiveHandler
+	exceptionHandler ExceptionHandler
 	pipeline         *Pipeline
-	executor         btiface.IEventLoop
+	executor         *EventLoop
 	mask             int
 }
 
-func NewHandlerContext(p *Pipeline, h btiface.IHandler, executor btiface.IEventLoop) *HandlerContext {
+func newHandlerContext(p *Pipeline, h any, executor *EventLoop) *HandlerContext {
 	if h == nil {
 		panic("handler is nil")
 	}
 	ctx := &HandlerContext{pipeline: p}
-	if in, ok := h.(btiface.IInHandler); ok {
+	if in, ok := h.(InHandler); ok {
 		ctx.inHandler = in
 		ctx.mask |= maskRead
 	}
-	if out, ok := h.(btiface.IOutHandler); ok {
+	if out, ok := h.(OutHandler); ok {
 		ctx.outHandler = out
 		ctx.mask |= maskWrite
 	}
-	if active, ok := h.(btiface.IActiveHandler); ok {
+	if active, ok := h.(ActiveHandler); ok {
 		ctx.activeHandler = active
 		ctx.mask |= maskActive
 	}
-	if ex, ok := h.(btiface.IExceptionHandler); ok {
+	if ex, ok := h.(ExceptionHandler); ok {
 		ctx.exceptionHandler = ex
 		ctx.mask |= maskException
 	}
@@ -55,7 +54,7 @@ func NewHandlerContext(p *Pipeline, h btiface.IHandler, executor btiface.IEventL
 	return ctx
 }
 
-func (hc *HandlerContext) GetConnection() btiface.IConnection {
+func (hc *HandlerContext) GetConnection() *Connection {
 	return hc.pipeline.GetConnection()
 }
 
@@ -83,11 +82,11 @@ func (hc *HandlerContext) recoverInbound() {
 	}
 }
 
-func (hc *HandlerContext) FireRead(msg interface{}) {
+func (hc *HandlerContext) FireRead(msg any) {
 	hc.findNext(maskRead).invokeRead(hc.executor, msg)
 }
 
-func (hc *HandlerContext) invokeRead(el btiface.IEventLoop, msg interface{}) {
+func (hc *HandlerContext) invokeRead(el *EventLoop, msg any) {
 	if hc.executor == el {
 		hc.callRead(msg)
 		return
@@ -100,15 +99,15 @@ func (hc *HandlerContext) invokeRead(el btiface.IEventLoop, msg interface{}) {
 	})
 }
 
-func (hc *HandlerContext) callRead(msg interface{}) {
+func (hc *HandlerContext) callRead(msg any) {
 	defer hc.recoverInbound()
 	hc.inHandler.OnRead(hc, msg)
 }
 
-func (hc *HandlerContext) FireWrite(msg interface{}) {
+func (hc *HandlerContext) FireWrite(msg any) {
 	hc.findPrev(maskWrite).invokeWrite(hc.executor, msg)
 }
-func (hc *HandlerContext) invokeWrite(el btiface.IEventLoop, msg interface{}) {
+func (hc *HandlerContext) invokeWrite(el *EventLoop, msg any) {
 	if hc.executor == el {
 		hc.callWrite(msg)
 		return
@@ -119,7 +118,7 @@ func (hc *HandlerContext) invokeWrite(el btiface.IEventLoop, msg interface{}) {
 }
 
 // 出站的消息异常，先只打个log
-func (hc *HandlerContext) callWrite(msg interface{}) {
+func (hc *HandlerContext) callWrite(msg any) {
 	defer func() {
 		if r := recover(); r != nil {
 			btlog.Ins().Errorf("callWrite panic， connID:%v msg:%T err:%v s:%s", hc.GetConnection().GetID(), msg, r, debug.Stack())
@@ -132,7 +131,7 @@ func (hc *HandlerContext) FireActive() {
 	hc.findNext(maskActive).invokeActive(hc.executor)
 }
 
-func (hc *HandlerContext) invokeActive(executor btiface.IEventLoop) {
+func (hc *HandlerContext) invokeActive(executor *EventLoop) {
 	if hc.executor == executor {
 		hc.callActive()
 		return
@@ -151,7 +150,7 @@ func (hc *HandlerContext) FireInactive() {
 	hc.findNext(maskActive).invokeInactive(hc.executor)
 }
 
-func (hc *HandlerContext) invokeInactive(executor btiface.IEventLoop) {
+func (hc *HandlerContext) invokeInactive(executor *EventLoop) {
 	if hc.executor == executor {
 		hc.callInactive()
 		return
@@ -170,7 +169,7 @@ func (hc *HandlerContext) FireException(err error) {
 	hc.findNext(maskException).invokeException(hc.executor, err)
 }
 
-func (hc *HandlerContext) invokeException(executor btiface.IEventLoop, err error) {
+func (hc *HandlerContext) invokeException(executor *EventLoop, err error) {
 	if hc.executor == executor {
 		hc.handleException(err)
 		return

@@ -3,7 +3,6 @@ package btnet
 import (
 	"context"
 	"errors"
-	"gobattle/btiface"
 	"gobattle/btlog"
 	"net"
 	"strconv"
@@ -11,17 +10,17 @@ import (
 	"time"
 )
 
-type server struct {
+type Server struct {
 	opts        Options
 	connMgr     *ConnManager
-	initializer btiface.PipelineInitializer
+	initializer PipelineInitializer
 	listener    *net.TCPListener
-	bossGroup   btiface.IEventLoopGroup
-	workerGroup btiface.IEventLoopGroup
+	bossGroup   *EventLoopGroup
+	workerGroup *EventLoopGroup
 }
 
-func NewServer(opts Options, boss, worker btiface.IEventLoopGroup) *server {
-	s := &server{
+func NewServer(opts Options, boss, worker *EventLoopGroup) *Server {
+	s := &Server{
 		opts:        opts,
 		connMgr:     NewConnManager(),
 		bossGroup:   boss,
@@ -30,16 +29,17 @@ func NewServer(opts Options, boss, worker btiface.IEventLoopGroup) *server {
 	return s
 }
 
-func (s *server) SetPipelineInitializer(fn btiface.PipelineInitializer) {
+func (s *Server) SetPipelineInitializer(fn PipelineInitializer) {
 	s.initializer = fn
 }
 
-func (s *server) Stop() {
+// Stop 强制关闭，不排空发送队列；优雅关闭用 Shutdown
+func (s *Server) Stop() {
 	s.closeListener()
 	s.connMgr.CloseAll()
 }
 
-func (s *server) Start() error {
+func (s *Server) Start() error {
 	if err := s.opts.validate(); err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ var (
 	maxAcceptDelay = time.Second
 )
 
-func (s *server) acceptLoop() {
+func (s *Server) acceptLoop() {
 	var delay time.Duration
 	for {
 		if s.connMgr.Len() >= s.opts.MaxConn {
@@ -122,16 +122,16 @@ func generalConnID() int64 {
 	return connIDCounter.Add(1)
 }
 
-func (s *server) closeListener() {
+func (s *Server) closeListener() {
 	if s.listener != nil {
 		_ = s.listener.Close()
 	}
 }
 
-func (s *server) ConnManager() btiface.IConnManager {
+func (s *Server) ConnManager() *ConnManager {
 	return s.connMgr
 }
-func (s *server) Shutdown(ctx context.Context) error {
+func (s *Server) Shutdown(ctx context.Context) error {
 	s.closeListener()
 	conns := s.connMgr.close()
 	for _, c := range conns {

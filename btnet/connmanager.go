@@ -1,7 +1,6 @@
 package btnet
 
 import (
-	"gobattle/btiface"
 	"iter"
 	"maps"
 	"slices"
@@ -9,7 +8,7 @@ import (
 )
 
 type ConnManager struct {
-	connections map[int64]btiface.IConnection
+	connections map[int64]*Connection
 	mu          sync.RWMutex
 	closed      bool
 	wg          sync.WaitGroup
@@ -17,11 +16,11 @@ type ConnManager struct {
 
 func NewConnManager() *ConnManager {
 	return &ConnManager{
-		connections: make(map[int64]btiface.IConnection),
+		connections: make(map[int64]*Connection),
 	}
 }
 
-func (cm *ConnManager) Add(conn btiface.IConnection) bool {
+func (cm *ConnManager) Add(conn *Connection) bool {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	if cm.closed {
@@ -40,15 +39,15 @@ func (cm *ConnManager) wait() {
 	cm.wg.Wait()
 }
 
-func (cm *ConnManager) Get(connId int64) (btiface.IConnection, bool) {
+func (cm *ConnManager) Get(connId int64) (*Connection, bool) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	connection, ok := cm.connections[connId]
 	return connection, ok
 }
 
-func (cm *ConnManager) All() iter.Seq[btiface.IConnection] {
-	return func(yield func(btiface.IConnection) bool) {
+func (cm *ConnManager) All() iter.Seq[*Connection] {
+	return func(yield func(*Connection) bool) {
 		for _, c := range cm.snapshot() {
 			if !yield(c) {
 				return
@@ -57,8 +56,7 @@ func (cm *ConnManager) All() iter.Seq[btiface.IConnection] {
 	}
 }
 
-func (cm *ConnManager) Broadcast(msgId uint32, data []byte) {
-	frame := EncodeEnvelope(&btiface.Envelope{Type: btiface.MsgTypePush, MsgId: msgId, Payload: data})
+func (cm *ConnManager) Broadcast(frame []byte) {
 	for c := range cm.All() {
 		if !c.IsClosed() {
 			c.GetPipeline().FireWrite(frame)
@@ -66,7 +64,7 @@ func (cm *ConnManager) Broadcast(msgId uint32, data []byte) {
 	}
 }
 
-func (cm *ConnManager) snapshot() []btiface.IConnection {
+func (cm *ConnManager) snapshot() []*Connection {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return slices.Collect(maps.Values(cm.connections))
@@ -83,7 +81,7 @@ func (cm *ConnManager) Len() int {
 	return len(cm.connections)
 }
 
-func (cm *ConnManager) close() []btiface.IConnection {
+func (cm *ConnManager) close() []*Connection {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.closed = true
