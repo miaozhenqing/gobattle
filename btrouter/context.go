@@ -11,7 +11,7 @@ type RequestContext struct {
 	conn    *btnet.Connection
 	msgId   uint32
 	route   *route
-	startAt time.Time // dispatch 收到请求的时间
+	startAt time.Time
 }
 
 func (c *RequestContext) Conn() *btnet.Connection {
@@ -24,4 +24,8 @@ func (c *RequestContext) MsgId() uint32 {
 
 func (c *RequestContext) Method() string {
 	return c.route.method
+}
+
+func (c *RequestContext) IsPublic() bool {
+	return c.route.public
 }

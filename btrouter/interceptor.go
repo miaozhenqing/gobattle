@@ -53,6 +53,9 @@ type auth struct {
 }
 
 func (a *auth) Before(ctx *RequestContext, req any) error {
+	if ctx.IsPublic() {
+		return nil
+	}
 	if !a.authed(ctx) {
 		return CodeUnauthenticated
 	}
@@ -61,7 +64,6 @@ func (a *auth) Before(ctx *RequestContext, req any) error {
 
 func (a *auth) After(ctx *RequestContext, req, resp any, err error) {}
 
-// SlowLog 从 dispatch 收到请求开始计时
 func SlowLog(threshold time.Duration) Interceptor {
 	if threshold <= 0 {
 		panic("threshold must be > 0")

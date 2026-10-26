@@ -5,8 +5,8 @@ import (
 	"gobattle/btlog"
 	"gobattle/btnet"
 	"gobattle/btrouter"
+	"gobattle/btsession"
 	"gobattle/example/config"
-	"gobattle/example/handler"
 	"gobattle/example/module"
 	"gobattle/example/proto"
 	"os"
@@ -26,14 +26,16 @@ func main() {
 	r := btrouter.NewRouter(btrouter.JSONCodec{})
 	r.AddInterceptor(
 		btrouter.RateLimit(20, 40),
-		btrouter.Auth(func(ctx *btrouter.RequestContext) bool { return true }), // 暂无登录协议，先全部放行
+		btrouter.Auth(btsession.IsLoggedIn),
 		btrouter.SlowLog(50*time.Millisecond),
 	)
-	r.RegisterModules(&module.PingModule{})
+	mgr := btsession.NewManager()
+	r.RegisterModules(&module.PingModule{}, module.NewLoginModule(mgr, r))
 
+	sessionHandler := btsession.NewSessionHandler(mgr)
 	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
-		p.AddLastGroup(biz, handler.NewSessionHandler())
+		p.AddLastGroup(biz, sessionHandler)
 		p.AddLastGroup(biz, r)
 	})
 
@@ -62,26 +64,39 @@ func main() {
 
 }
 
-func runClient() {
+func onPush(msgId uint32, data []byte) {
+	btlog.Ins().Infof("push msgId:%v data:%s", msgId, data)
+}
+
+func dial() *btrouter.Client {
 	cfg := config.ServerConfig
 	addr := cfg.Host + ":" + strconv.Itoa(cfg.TcpPort)
-	c, err := btrouter.Dial(addr, cfg.MaxPacketSize, btrouter.JSONCodec{}, func(msgId uint32, data []byte) {
-		btlog.Ins().Infof("push msgId:%v data:%s", msgId, data)
-	})
+	c, err := btrouter.Dial(addr, cfg.MaxPacketSize, btrouter.JSONCodec{}, onPush)
 	if err != nil {
-		btlog.Ins().Errorf("dial error:%v", err)
-		return
+		panic(err)
 	}
-	defer c.Close()
+	return c
+}
 
-	call := func(msgId uint32, req any) {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		resp, err := btrouter.Call[proto.PingResp](ctx, c, msgId, req)
-		btlog.Ins().Infof("call msgId:%v resp:%+v err:%v", msgId, resp, err)
-	}
+func call[Resp any](c *btrouter.Client, msgId uint32, req any) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	resp, err := btrouter.Call[Resp](ctx, c, msgId, req)
+	btlog.Ins().Infof("call msgId:%v resp:%+v err:%v", msgId, resp, err)
+}
+
+func runClient() {
+	c1 := dial()
+	call[proto.PingResp](c1, proto.MsgPing, &proto.PingReq{Text: "hello"})
+	call[proto.LoginResp](c1, proto.MsgLogin, &proto.LoginReq{Token: "10001"})
+	call[proto.PingResp](c1, proto.MsgPing, &proto.PingReq{Text: "hello"})
+
+	c2 := dial()
+	defer c2.Close()
+	call[proto.LoginResp](c2, proto.MsgLogin, &proto.LoginReq{Token: "10001"})
+
 	for {
-		call(proto.MsgPing, &proto.PingReq{Text: "hello world"})
+		call[proto.PingResp](c2, proto.MsgPing, &proto.PingReq{Text: "hello world"})
 		time.Sleep(3 * time.Second)
 	}
 }

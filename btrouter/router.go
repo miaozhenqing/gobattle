@@ -17,6 +17,7 @@ var _ btnet.InHandler = (*Router)(nil)
 
 type route struct {
 	method string
+	public bool // 免登录
 	decode func(payload []byte) (any, error)
 	call   func(ctx *RequestContext, req any) (any, error) // 业务方法
 }
@@ -58,11 +59,21 @@ func (r *Router) RegisterModules(ms ...Module) {
 }
 
 func Handle[Req any, Resp any](r *Router, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error)) {
+	r.addRoute(msgId, newRoute(r, msgId, fn, false))
+}
+
+// HandlePublic 注册免登录路由（登录、心跳）
+func HandlePublic[Req any, Resp any](r *Router, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error)) {
+	r.addRoute(msgId, newRoute(r, msgId, fn, true))
+}
+
+func newRoute[Req any, Resp any](r *Router, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error), public bool) *route {
 	if fn == nil {
 		panic(fmt.Sprintf("handler of msgId %d is nil", msgId))
 	}
-	r.addRoute(msgId, &route{
+	return &route{
 		method: funcName(fn),
+		public: public,
 		decode: func(payload []byte) (any, error) {
 			req := new(Req)
 			if err := r.unmarshal(payload, req); err != nil {
@@ -77,7 +88,7 @@ func Handle[Req any, Resp any](r *Router, msgId uint32, fn func(*RequestContext,
 			}
 			return resp, err
 		},
-	})
+	}
 }
 
 func (r *Router) unmarshal(payload []byte, req any) error {
