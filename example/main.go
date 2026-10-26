@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"gobattle/btlog"
 	"gobattle/btnet"
 	"gobattle/btrouter"
@@ -44,14 +43,7 @@ func main() {
 	}
 
 	go runClient()
-	go func() {
-		// 广播：整帧只编码一次
-		for range time.Tick(5 * time.Second) {
-			if err := r.Broadcast(s.ConnManager(), proto.PushBroadcast, &proto.PingResp{Text: "broadcast"}); err != nil {
-				btlog.Ins().Errorf("broadcast error:%v", err)
-			}
-		}
-	}()
+
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-sigCtx.Done()
@@ -90,19 +82,6 @@ func runClient() {
 	}
 	for {
 		call(proto.MsgPing, &proto.PingReq{Text: "hello world"})
-		call(proto.MsgPing, &proto.PingReq{})
-		call(9999, nil)
-		// 限流，连续发 100 次
-		limited := 0
-		for range 100 {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			_, err := btrouter.Call[proto.PingResp](ctx, c, proto.MsgPing, &proto.PingReq{Text: "flood"})
-			cancel()
-			if errors.Is(err, btrouter.CodeResourceExhausted) {
-				limited++
-			}
-		}
-		btlog.Ins().Infof("flood 100, limited:%v", limited)
 		time.Sleep(3 * time.Second)
 	}
 }

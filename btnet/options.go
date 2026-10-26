@@ -41,10 +41,10 @@ func (o *Options) validate() error {
 	switch {
 	case o.MaxPacketSize < FrameHeaderSize:
 		return fmt.Errorf("MaxPacketSize %d < FrameHeaderSize %d", o.MaxPacketSize, FrameHeaderSize)
-	case o.IOReadBuffSize <= 0: // 为 0 时 Read 永远返回 0，读协程会空转
+	case o.IOReadBuffSize <= 0:
 		return fmt.Errorf("IOReadBuffSize must be > 0")
-	case o.SendQueueSize < 0:
-		return fmt.Errorf("SendQueueSize must be >= 0")
+	case o.SendQueueSize <= 0:
+		return fmt.Errorf("SendQueueSize must be > 0")
 	case o.MaxConn <= 0:
 		return fmt.Errorf("MaxConn must be > 0")
 	}

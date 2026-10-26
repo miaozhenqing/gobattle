@@ -161,7 +161,12 @@ func (hc *HandlerContext) invokeInactive(executor *EventLoop) {
 }
 
 func (hc *HandlerContext) callInactive() {
-	defer hc.recoverInbound()
+	defer func() {
+		if r := recover(); r != nil {
+			btlog.Ins().Errorf("OnInactive panic, connID:%v err:%v\n%s", hc.GetConnection().GetID(), r, debug.Stack())
+			hc.FireInactive()
+		}
+	}()
 	hc.activeHandler.OnInactive(hc)
 }
 

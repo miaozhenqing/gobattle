@@ -37,7 +37,8 @@ type Connection struct {
 	attMu sync.RWMutex
 	attrs map[any]any
 
-	onInactiveDone func()
+	onInactiveDone   func()
+	inactiveDoneOnce sync.Once
 }
 
 func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop *EventLoop, connMgr *ConnManager,
@@ -265,7 +266,9 @@ func (c *Connection) fireException(err error) {
 }
 
 func (c *Connection) inactiveDone() {
-	if c.onInactiveDone != nil {
-		c.onInactiveDone()
-	}
+	c.inactiveDoneOnce.Do(func() {
+		if c.onInactiveDone != nil {
+			c.onInactiveDone()
+		}
+	})
 }

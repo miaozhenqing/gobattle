@@ -1,6 +1,7 @@
 package btrouter
 
 import (
+	"errors"
 	"fmt"
 	"gobattle/btlog"
 	"gobattle/btnet"
@@ -135,7 +136,6 @@ func (r *Router) dispatch(conn *btnet.Connection, env *Envelope) {
 	r.reply(conn, env, resp, err)
 }
 
-// invoke 每个阶段单独 recover：任一 Before panic 视同返回错误，已通过的拦截器仍会执行 After
 func (r *Router) invoke(ctx *RequestContext, rt *route, payload []byte) (resp any, err error) {
 	req, err := r.safeDecode(ctx, rt, payload)
 	if err != nil {
@@ -176,14 +176,12 @@ func (r *Router) safeCall(ctx *RequestContext, rt *route, req any) (resp any, er
 	return rt.call(ctx, req)
 }
 
-// safeAfter After 的 panic 只记日志，不影响响应和其余拦截器
 func (r *Router) safeAfter(ctx *RequestContext, rt *route, it Interceptor, req, resp any, err error) {
 	var ignored error
 	defer r.recoverPanic(ctx, rt, "interceptor.After", it, &ignored)
 	it.After(ctx, req, resp, err)
 }
 
-// recoverPanic 必须被 defer 直接调用，否则 recover 不生效
 func (r *Router) recoverPanic(ctx *RequestContext, rt *route, stage string, it Interceptor, err *error) {
 	if p := recover(); p != nil {
 		if it != nil {
@@ -197,7 +195,7 @@ func (r *Router) recoverPanic(ctx *RequestContext, rt *route, stage string, it I
 
 func (r *Router) reply(conn *btnet.Connection, req *Envelope, resp any, err error) {
 	code := r.toCode(conn, req, err)
-	if req.Seq == 0 { // 客户端不等结果，不回包
+	if req.Seq == 0 {
 		return
 	}
 
@@ -218,7 +216,8 @@ func (r *Router) toCode(conn *btnet.Connection, env *Envelope, err error) Code {
 	if err == nil {
 		return CodeOK
 	}
-	if code, ok := err.(Code); ok {
+	var code Code
+	if errors.As(err, &code) {
 		return code
 	}
 	btlog.Ins().Errorf("non-code error, connID:%v msgId:%v err:%v", conn.GetID(), env.MsgId, err)
@@ -238,7 +237,7 @@ func (r *Router) Broadcast(mgr *btnet.ConnManager, msgId uint32, v any) error {
 	if err != nil {
 		return err
 	}
-	// 整帧只编码一次，所有连接共享
+	// 编码一次
 	mgr.Broadcast(encodeEnvelope(&Envelope{Type: MsgTypePush, MsgId: msgId, Payload: data}))
 	return nil
 }
