@@ -229,6 +229,10 @@ func (r *Router) toCode(conn *btnet.Connection, env *Envelope, err error) Code {
 	}
 	var code Code
 	if errors.As(err, &code) {
+		// 包装过的 Code 带有上下文（如底层 DB 错误），日志打完整链，客户端只拿到 code
+		if err != error(code) {
+			btlog.Ins().Warnf("code error, connID:%v msgId:%v code:%v err:%v", conn.GetID(), env.MsgId, uint32(code), err)
+		}
 		return code
 	}
 	btlog.Ins().Errorf("non-code error, connID:%v msgId:%v err:%v", conn.GetID(), env.MsgId, err)
