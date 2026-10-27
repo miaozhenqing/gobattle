@@ -74,6 +74,7 @@ func main() {
 	}
 	r.RegisterModules(
 		module.NewLoginModule(moduleDeps),
+		module.NewDsModule(moduleDeps),
 	)
 
 	if err = s.Start(); err != nil {

@@ -13,8 +13,8 @@ type UserRepository struct {
 	tx *sqlx.Tx
 }
 
-func (r *UserRepository) GetByUsernameForUpdate(ctx context.Context, username string) (*model.User, error) {
-	user := &model.User{}
+func (r *UserRepository) GetByUsernameForUpdate(ctx context.Context, username string) (*model.UserModel, error) {
+	user := &model.UserModel{}
 	err := r.tx.GetContext(ctx, user,
 		"SELECT * FROM `user` WHERE username = ? FOR UPDATE", username)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -26,7 +26,7 @@ func (r *UserRepository) GetByUsernameForUpdate(ctx context.Context, username st
 	return user, nil
 }
 
-func (r *UserRepository) Insert(ctx context.Context, user *model.User) error {
+func (r *UserRepository) Insert(ctx context.Context, user *model.UserModel) error {
 	res, err := r.tx.ExecContext(ctx,
 		"INSERT INTO `user` (username, roleName, createTime, lastLoginTime) VALUES (?, ?, ?, ?)",
 		user.Username, user.RoleName, user.CreateTime, user.LastLoginTime)

@@ -19,7 +19,7 @@ func NewLoginModule(d *Deps) *LoginModule {
 
 func (m *LoginModule) RegisterRoutes(r *btrouter.Router) {
 	btrouter.HandlePublic(r, proto.MsgLogin, m.Login)
-	btrouter.HandlePublic(r, proto.MsgHeartBeat, m.HeartBeat)
+	btrouter.Handle(r, proto.MsgHeartBeat, m.HeartBeat)
 }
 
 func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (*proto.LoginResp, error) {

@@ -18,7 +18,7 @@ func NewUserService(d *Deps) *UserService {
 }
 
 type LoginResult struct {
-	User    *model.User
+	User    *model.UserModel
 	Created bool
 }
 
@@ -42,7 +42,7 @@ func (s *UserService) login(ctx context.Context, username string) (*LoginResult,
 			return nil, err
 		}
 		if user == nil {
-			user = &model.User{Username: username, RoleName: username, CreateTime: now, LastLoginTime: now}
+			user = &model.UserModel{Username: username, RoleName: username, CreateTime: now, LastLoginTime: now}
 			return &LoginResult{User: user, Created: true}, tx.User.Insert(ctx, user)
 		}
 		user.LastLoginTime = now
