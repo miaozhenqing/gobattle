@@ -9,9 +9,12 @@ import (
 	"gobattle/game/config"
 	"gobattle/game/db"
 	"gobattle/game/module"
+	"gobattle/game/proto"
+	"gobattle/game/repository"
 	"gobattle/game/service"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -37,8 +40,7 @@ func main() {
 		panic(err)
 	}
 
-	accountService := service.NewAccountService(d)
-
+	//系统相关配置
 	boss := btnet.NewEventLoopGroup("boss", 1)
 	worker := btnet.NewEventLoopGroup("worker", cfg.IOLoopSize)
 	biz := btnet.NewEventLoopGroup("biz", cfg.BizLoopSize)
@@ -50,17 +52,8 @@ func main() {
 		btrouter.Auth(btsession.IsLoggedIn),
 		btrouter.SlowLog(50*time.Millisecond),
 	)
-	mgr := btsession.NewManager()
-	deps := &module.Deps{
-		Router:         r,
-		SessionMgr:     mgr,
-		QueryTimeout:   dbCfg.QueryTimeout,
-		AccountService: accountService,
-	}
-	r.RegisterModules(
-		module.NewLoginModule(deps),
-	)
 
+	mgr := btsession.NewManager()
 	sessionHandler := btsession.NewSessionHandler(mgr)
 	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
@@ -68,9 +61,27 @@ func main() {
 		p.AddLastGroup(biz, r)
 	})
 
+	//业务相关配置
+	deps := &service.Deps{DB: repository.NewDB(d)}
+	deps.UserService = service.NewUserService(deps)
+	deps.ItemService = service.NewItemService(deps)
+
+	moduleDeps := &module.Deps{
+		Router:       r,
+		SessionMgr:   mgr,
+		QueryTimeout: dbCfg.QueryTimeout,
+		Deps:         deps,
+	}
+	r.RegisterModules(
+		module.NewLoginModule(moduleDeps),
+	)
+
 	if err = s.Start(); err != nil {
 		panic("server start error")
 	}
+
+	//测试代码
+	go runClient()
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -92,4 +103,30 @@ func main() {
 	if err := d.Close(); err != nil {
 		btlog.Ins().Errorf("db close error:%v", err)
 	}
+}
+
+func runClient() {
+	c1 := dial()
+	call[proto.LoginResp](c1, proto.MsgLogin, &proto.LoginReq{Username: "test1"})
+}
+
+func dial() *btrouter.Client {
+	cfg := config.ServerConfig
+	addr := cfg.Host + ":" + strconv.Itoa(cfg.TcpPort)
+	c, err := btrouter.Dial(addr, cfg.MaxPacketSize, btrouter.JSONCodec{}, onPush)
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+
+func onPush(msgId uint32, data []byte) {
+	btlog.Ins().Infof("push msgId:%v data:%s", msgId, data)
+}
+
+func call[Resp any](c *btrouter.Client, msgId uint32, req any) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	resp, err := btrouter.Call[Resp](ctx, c, msgId, req)
+	btlog.Ins().Infof("call msgId:%v resp:%+v err:%v", msgId, resp, err)
 }

@@ -1,6 +1,6 @@
 package model
 
-type Account struct {
+type User struct {
 	UID           int64  `db:"uid"`
 	Username      string `db:"username"`
 	RoleName      string `db:"roleName"`      // 建号时取 username

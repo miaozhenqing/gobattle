@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"gobattle/btlog"
@@ -53,31 +52,6 @@ func Open(ctx context.Context, opts Options) (*sqlx.DB, error) {
 	}
 	btlog.Ins().Infof("mysql connected, addr:%v db:%v", cfg.Addr, cfg.DBName)
 	return d, nil
-}
-
-// WithTx fn 返回 error 或 panic 时回滚
-func WithTx(ctx context.Context, d *sqlx.DB, fn func(tx *sqlx.Tx) error) (err error) {
-	tx, err := d.BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p)
-		}
-		if err != nil {
-			// ctx 超时后驱动已自动回滚，此时返回 ErrTxDone，忽略
-			if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-				btlog.Ins().Errorf("rollback error:%v", rbErr)
-			}
-			return
-		}
-		if err = tx.Commit(); err != nil {
-			err = fmt.Errorf("commit tx: %w", err)
-		}
-	}()
-	return fn(tx)
 }
 
 const (

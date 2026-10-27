@@ -31,20 +31,21 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (
 
 	dbCtx, cancel := context.WithTimeout(ctx, m.QueryTimeout)
 	defer cancel()
-	acc, created, err := m.AccountService.Login(dbCtx, req.Username)
+	res, err := m.UserService.Login(dbCtx, req.Username)
 	if err != nil {
 		return nil, err
 	}
+	user := res.User
 
-	old, err := m.SessionMgr.Bind(ctx.Conn(), acc.UID)
+	old, err := m.SessionMgr.Bind(ctx.Conn(), user.UID)
 	if err != nil {
 		return nil, proto.CodeAlreadyLogin
 	}
 	if old != nil {
 		m.kick(old)
 	}
-	btlog.Ins().Infof("login, uid:%v username:%v created:%v connID:%v", acc.UID, acc.Username, created, ctx.Conn().GetID())
-	return &proto.LoginResp{UID: acc.UID, Username: acc.Username, RoleName: acc.RoleName, IsNew: created}, nil
+	btlog.Ins().Infof("login, uid:%v username:%v created:%v connID:%v", user.UID, user.Username, res.Created, ctx.Conn().GetID())
+	return &proto.LoginResp{UID: user.UID, Username: user.Username, RoleName: user.RoleName, IsNew: res.Created}, nil
 }
 
 func (m *LoginModule) kick(old *btsession.Session) {
