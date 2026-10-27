@@ -179,3 +179,7 @@ func (c *Client) shutdown() {
 		close(c.done)
 	})
 }
+
+func (c *Client) Done() <-chan struct{} {
+	return c.done
+}

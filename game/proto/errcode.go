@@ -9,4 +9,5 @@ const (
 	// ==================== 登录 ====================
 	CodeInvalidUsername btrouter.Code = 10101 // username 为空、非法或过长
 	CodeAlreadyLogin    btrouter.Code = 10102 // 当前连接已登录
+	CodeNotLogin        btrouter.Code = 10103 // 当前连接未登录
 )

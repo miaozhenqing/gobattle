@@ -99,7 +99,6 @@ func main() {
 		}
 	}
 
-	// 业务 loop 停完再关库，避免在途请求拿不到连接
 	if err := d.Close(); err != nil {
 		btlog.Ins().Errorf("db close error:%v", err)
 	}
@@ -107,7 +106,25 @@ func main() {
 
 func runClient() {
 	c1 := dial()
-	call[proto.LoginResp](c1, proto.MsgLogin, &proto.LoginReq{Username: "test1"})
+	defer c1.Close()
+	//登录和其他业务
+	loginResp := call[proto.LoginResp](c1, proto.MsgLogin, &proto.LoginReq{Username: "test1"})
+	call[proto.HeartBeatResp](c1, proto.MsgHeartBeat, &proto.HeartBeatReq{UID: loginResp.UID})
+
+	if config.ServerConfig.IdleTimeout > 0 {
+		//需要比IdleTimeout小，否则会触发关闭。写个10测试下
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				call[proto.HeartBeatResp](c1, proto.MsgHeartBeat, &proto.HeartBeatReq{UID: loginResp.UID})
+			case <-c1.Done():
+				btlog.Ins().Infof("client done, stop heartbeat")
+				return
+			}
+		}
+	}
 }
 
 func dial() *btrouter.Client {
@@ -124,9 +141,10 @@ func onPush(msgId uint32, data []byte) {
 	btlog.Ins().Infof("push msgId:%v data:%s", msgId, data)
 }
 
-func call[Resp any](c *btrouter.Client, msgId uint32, req any) {
+func call[Resp any](c *btrouter.Client, msgId uint32, req any) *Resp {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	resp, err := btrouter.Call[Resp](ctx, c, msgId, req)
 	btlog.Ins().Infof("call msgId:%v resp:%+v err:%v", msgId, resp, err)
+	return resp
 }

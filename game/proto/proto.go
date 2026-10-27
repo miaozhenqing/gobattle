@@ -2,7 +2,8 @@ package proto
 
 const (
 	// ==================== 登录 ====================
-	MsgLogin uint32 = 1101
+	MsgLogin     uint32 = 1101
+	MsgHeartBeat uint32 = 1102
 	// ==================== 推送 ====================
 	PushKick uint32 = 51002
 )
@@ -18,5 +19,12 @@ type LoginResp struct {
 	IsNew    bool   `json:"isNew"` // 本次新建账号
 }
 
-// KickPush 账号在别处登录
 type KickPush struct{}
+
+type HeartBeatReq struct {
+	UID int64 `json:"uid"`
+}
+
+type HeartBeatResp struct {
+	UID int64 `json:"uid"`
+}

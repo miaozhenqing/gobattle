@@ -19,6 +19,7 @@ func NewLoginModule(d *Deps) *LoginModule {
 
 func (m *LoginModule) RegisterRoutes(r *btrouter.Router) {
 	btrouter.HandlePublic(r, proto.MsgLogin, m.Login)
+	btrouter.HandlePublic(r, proto.MsgHeartBeat, m.HeartBeat)
 }
 
 func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (*proto.LoginResp, error) {
@@ -52,6 +53,13 @@ func (m *LoginModule) kick(old *btsession.Session) {
 	btlog.Ins().Infof("kick, uid:%v connID:%v", old.UID(), old.Conn().GetID())
 	_ = m.Router.Push(old.Conn(), proto.PushKick, &proto.KickPush{})
 	old.Conn().FlushAndStop()
+}
+
+func (m *LoginModule) HeartBeat(requestContext *btrouter.RequestContext, req *proto.HeartBeatReq) (*proto.HeartBeatResp, error) {
+	if !btsession.IsLoggedIn(requestContext) {
+		return nil, proto.CodeNotLogin
+	}
+	return &proto.HeartBeatResp{UID: req.UID}, nil
 }
 
 func validUsername(s string) bool {
