@@ -12,6 +12,7 @@ type Deps struct {
 	SessionMgr   *btsession.Manager
 	QueryTimeout time.Duration
 
-	// 所有 service，新增 service 加在 service.Deps 里
+	DsModule *DsModule
+
 	*service.Deps
 }

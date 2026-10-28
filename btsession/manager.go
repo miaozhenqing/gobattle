@@ -10,8 +10,9 @@ import (
 var ErrAlreadyLogin = errors.New("conn already login")
 
 type Manager struct {
-	mu       sync.RWMutex
-	sessions map[int64]*Session
+	mu              sync.RWMutex
+	sessions        map[int64]*Session
+	unbindListeners []func(s *Session)
 }
 
 func NewManager() *Manager {
@@ -53,4 +54,12 @@ func (m *Manager) unbind(conn *btnet.Connection) {
 	}
 	m.mu.Unlock()
 	btlog.Ins().Infof("session unbind, uid:%v connID:%v", s.uid, conn.GetID())
+
+	for _, fn := range m.unbindListeners {
+		fn(s)
+	}
+}
+
+func (m *Manager) OnUnbind(fn func(s *Session)) {
+	m.unbindListeners = append(m.unbindListeners, fn)
 }

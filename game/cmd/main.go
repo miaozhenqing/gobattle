@@ -72,9 +72,12 @@ func main() {
 		QueryTimeout: dbCfg.QueryTimeout,
 		Deps:         deps,
 	}
+	moduleDeps.DsModule = module.NewDsModule(moduleDeps)
+	matchModule := module.NewMatchModule(moduleDeps)
 	r.RegisterModules(
 		module.NewLoginModule(moduleDeps),
-		module.NewDsModule(moduleDeps),
+		moduleDeps.DsModule,
+		matchModule,
 	)
 
 	if err = s.Start(); err != nil {
@@ -82,11 +85,15 @@ func main() {
 	}
 
 	//测试代码
+	//开始匹配
+	matchModule.Run()
 	go runClient()
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-sigCtx.Done()
+
+	matchModule.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -106,26 +113,38 @@ func main() {
 }
 
 func runClient() {
-	c1 := dial()
-	defer c1.Close()
+	client := dial()
+	defer client.Close()
 	//登录和其他业务
-	loginResp := call[proto.LoginResp](c1, proto.MsgLogin, &proto.LoginReq{Username: "test1"})
-	call[proto.HeartBeatResp](c1, proto.MsgHeartBeat, &proto.HeartBeatReq{UID: loginResp.UID})
+	loginResp, _ := call[proto.LoginResp](client, proto.MsgLogin, &proto.LoginReq{Username: "test1"})
 
+	//心跳
 	if config.ServerConfig.IdleTimeout > 0 {
 		//需要比IdleTimeout小，否则会触发关闭。写个10测试下
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				call[proto.HeartBeatResp](c1, proto.MsgHeartBeat, &proto.HeartBeatReq{UID: loginResp.UID})
-			case <-c1.Done():
-				btlog.Ins().Infof("client done, stop heartbeat")
-				return
+		go func() {
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					call[proto.HeartBeatResp](client, proto.MsgHeartBeat, &proto.HeartBeatReq{UID: loginResp.UID})
+				case <-client.Done():
+					btlog.Ins().Infof("client done, stop heartbeat")
+					return
+				}
 			}
-		}
+		}()
 	}
+
+	//模拟匹配
+	_, msErr := call[proto.MatchStartResp](client, proto.MsgMatchStart, &proto.MatchStartReq{GameMode: 1, MapID: 1})
+	if msErr != nil {
+		btlog.Ins().Infof(">>>>>match start error:%v", msErr)
+	}
+
+	//客户端等待
+	<-client.Done()
+	btlog.Ins().Infof("client done, exit runClient")
 }
 
 func dial() *btrouter.Client {
@@ -142,10 +161,9 @@ func onPush(msgId uint32, data []byte) {
 	btlog.Ins().Infof("push msgId:%v data:%s", msgId, data)
 }
 
-func call[Resp any](c *btrouter.Client, msgId uint32, req any) *Resp {
+func call[Resp any](c *btrouter.Client, msgId uint32, req any) (*Resp, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	resp, err := btrouter.Call[Resp](ctx, c, msgId, req)
-	btlog.Ins().Infof("call msgId:%v resp:%+v err:%v", msgId, resp, err)
-	return resp
+	return resp, err
 }

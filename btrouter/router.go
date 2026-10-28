@@ -161,7 +161,7 @@ func (r *Router) invoke(ctx *RequestContext, rt *route, payload []byte) (resp an
 	}
 	if err == nil {
 		resp, err = r.safeCall(ctx, rt, req)
-		btlog.Ins().Infof("invoke msgId:%v , method:%v", ctx.msgId, rt.method)
+		btlog.Ins().Infof(">>>>>>>>>>invoke msgId:%v, method:%v", ctx.msgId, rt.method)
 	}
 	for i := n - 1; i >= 0; i-- {
 		r.safeAfter(ctx, rt, r.interceptors[i], req, resp, err)

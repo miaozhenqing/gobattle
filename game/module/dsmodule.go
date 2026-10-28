@@ -28,6 +28,7 @@ func NewDsModule(d *Deps) *DsModule {
 func (m *DsModule) RegisterRoutes(r *btrouter.Router) {
 	btrouter.HandlePublic(r, proto.MsgDsRegister, m.Register)
 	btrouter.HandlePublic(r, proto.MsgDsHeartBeat, m.HeartBeat)
+	btrouter.HandlePublic(r, proto.MsgDsRelease, m.Release)
 }
 
 func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterReq) (*proto.DsRegisterResp, error) {
@@ -53,7 +54,7 @@ func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterR
 	m.dsServers[ds.ID] = ds
 	m.mu.Unlock()
 	if old != nil {
-		btlog.Ins().Infof("ds replaced, dsID:%v oldConnID:%v newConnID:%v", ds.ID, old.Conn.GetID(), conn.GetID())
+		btlog.Ins().Infof("ds replaced, dsID:%v oldConnID:%v, newConnID:%v", ds.ID, old.Conn.GetID(), conn.GetID())
 		old.Conn.FlushAndStop()
 	}
 
@@ -62,7 +63,7 @@ func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterR
 		m.unregister(ds)
 	}()
 
-	btlog.Ins().Infof("ds register, dsID:%v addr:%v:%v connID:%v", ds.ID, ds.IP, ds.Port, conn.GetID())
+	btlog.Ins().Infof("ds register, dsID:%v addr:%v:%v, connID:%v", ds.ID, ds.IP, ds.Port, conn.GetID())
 	return &proto.DsRegisterResp{DsID: ds.ID}, nil
 }
 
@@ -74,11 +75,44 @@ func (m *DsModule) HeartBeat(ctx *btrouter.RequestContext, _ *proto.DsHeartBeatR
 	return &proto.DsHeartBeatResp{DsID: ds.ID}, nil
 }
 
+func (m *DsModule) Release(ctx *btrouter.RequestContext, req *proto.DsReleaseReq) (*proto.DsReleaseResp, error) {
+	ds, ok := dsKey.Get(ctx.Conn())
+	if !ok {
+		return nil, proto.CodeDsNotRegistered
+	}
+	if !tryRelease(ds) {
+		btlog.Ins().Warnf("ds release but already idle, dsID:%v, BattleId:%v, connID:%v", ds.ID, req.BattleId, ds.Conn.GetID())
+	} else {
+		btlog.Ins().Infof("ds release, dsID:%v, BattleId:%v", ds.ID, req.BattleId)
+	}
+	return &proto.DsReleaseResp{DsID: ds.ID}, nil
+}
+
 func (m *DsModule) unregister(ds *model.DsModel) {
 	m.mu.Lock()
 	if m.dsServers[ds.ID] == ds {
 		delete(m.dsServers, ds.ID)
 	}
 	m.mu.Unlock()
-	btlog.Ins().Infof("ds unregister, dsID:%v connID:%v", ds.ID, ds.Conn.GetID())
+	btlog.Ins().Infof("ds unregister, dsID:%v, connID:%v", ds.ID, ds.Conn.GetID())
+}
+
+// 先随机选一个可用的
+func (m *DsModule) PickDs() *model.DsModel {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, dsModel := range m.dsServers {
+		if tryOccupy(dsModel) {
+			return dsModel
+		}
+	}
+	return nil
+}
+
+func tryOccupy(ds *model.DsModel) bool {
+	return ds.State.CompareAndSwap(model.DsStateIdle, model.DsStateBusy)
+}
+
+func tryRelease(ds *model.DsModel) bool {
+	return ds.State.CompareAndSwap(model.DsStateBusy, model.DsStateIdle)
 }

@@ -7,8 +7,14 @@ const (
 	// ==================== DS ====================
 	MsgDsRegister  uint32 = 1201
 	MsgDsHeartBeat uint32 = 1202
+	MsgDsRelease   uint32 = 1203
+	// ==================== 匹配 ====================
+	MsgMatchStart  uint32 = 1301
+	MsgMatchCancel uint32 = 1302
 	// ==================== 推送 ====================
-	PushKick uint32 = 51002
+	PushKick         uint32 = 51002
+	PushMatchSuccess uint32 = 51003
+	PushMatchFail    uint32 = 51004
 )
 
 type LoginReq struct {
@@ -46,4 +52,46 @@ type DsHeartBeatReq struct{}
 
 type DsHeartBeatResp struct {
 	DsID int64 `json:"dsId"`
+}
+
+type DsReleaseReq struct {
+	BattleId int64 `json:"battleId"`
+}
+
+type DsReleaseResp struct {
+	DsID int64 `json:"dsId"`
+}
+
+type MatchStartReq struct {
+	GameMode int `json:"gameMode"`
+	MapID    int `json:"mapId"`
+}
+
+type MatchStartResp struct {
+	BattleId int64 `json:"battleId"`
+	GameMode int   `json:"gameMode"`
+	MapID    int   `json:"mapId"`
+}
+
+type MatchCancelReq struct{}
+
+type MatchCancelResp struct{}
+
+type MatchPlayerInfo struct {
+	UID        int64 `json:"uid"`
+	MatchScore int   `json:"matchScore"`
+	Team       int   `json:"team"`
+}
+
+type MatchSuccessPush struct {
+	BattleId int64              `json:"battleId"`
+	GameMode int                `json:"gameMode"`
+	MapID    int                `json:"mapId"`
+	DsIP     string             `json:"dsIp"`
+	DsPort   int                `json:"dsPort"`
+	Players  []*MatchPlayerInfo `json:"players"`
+}
+
+type MatchFailPush struct {
+	Code uint32 `json:"code"`
 }

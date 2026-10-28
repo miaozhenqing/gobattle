@@ -15,4 +15,10 @@ const (
 	CodeDsInvalidParam      btrouter.Code = 10201 // ds参数错误
 	CodeDsAlreadyRegistered btrouter.Code = 10202 // 当前连接已注册
 	CodeDsNotRegistered     btrouter.Code = 10203 // 当前连接未注册
+
+	// ==================== 匹配 ====================
+	CodeMatchInvalidParam btrouter.Code = 10301 // 匹配参数错误
+	CodeMatchAlreadyIn    btrouter.Code = 10302 // 已在匹配中
+	CodeMatchNotIn        btrouter.Code = 10303 // 未在匹配中
+	CodeMatchNoDs         btrouter.Code = 10304 // 无可用DS服务器
 )
