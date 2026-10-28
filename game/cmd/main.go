@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"gobattle/btlog"
 	"gobattle/btnet"
 	"gobattle/btrouter"
@@ -87,6 +88,7 @@ func main() {
 	//测试代码
 	//开始匹配
 	matchModule.RunMatch()
+	go runDsClient()
 	go runClient()
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -127,7 +129,7 @@ func runClient() {
 			for {
 				select {
 				case <-ticker.C:
-					call[proto.HeartBeatResp](client, proto.MsgHeartBeat, &proto.HeartBeatReq{UID: loginResp.UID})
+					call[proto.HeartBeatResp](client, proto.MsgHeartBeat, &proto.HeartBeatReq{UserId: loginResp.UserId})
 				case <-client.Done():
 					btlog.Ins().Info("clientHeartbeatStop")
 					return
@@ -147,7 +149,46 @@ func runClient() {
 	btlog.Ins().Info("clientExit")
 }
 
+// 模拟DS：注册 → 收到分配 → 上报开局 → 5s后上报结束
+func runDsClient() {
+	var ds *btrouter.Client
+	ds = dialWithPush(func(msgId uint32, data []byte) {
+		btlog.Ins().Info("dsClientPush", "msgId", msgId, "data", string(data))
+		if msgId != proto.PushDsBattleAssign {
+			return
+		}
+		assign := &proto.DsBattleAssignPush{}
+		if err := json.Unmarshal(data, assign); err != nil {
+			btlog.Ins().Warn("dsClientDecodeError", "err", err)
+			return
+		}
+		// 回调在读循环里，不能直接同步 call
+		go func() {
+			if _, err := call[proto.DsBattleStartResp](ds, proto.MsgDsBattleStart, &proto.DsBattleStartReq{BattleId: assign.BattleId}); err != nil {
+				btlog.Ins().Warn("dsClientBattleStartError", "err", err)
+				return
+			}
+			time.Sleep(5 * time.Second)
+			endReq := &proto.DsBattleEndReq{BattleId: assign.BattleId, GameMode: assign.GameMode, Statistics: map[int]int{1: 10}}
+			if _, err := call[proto.DsBattleEndResp](ds, proto.MsgDsBattleEnd, endReq); err != nil {
+				btlog.Ins().Warn("dsClientBattleEndError", "err", err)
+			}
+		}()
+	})
+	defer ds.Close()
+
+	if _, err := call[proto.DsRegisterResp](ds, proto.MsgDsRegister, &proto.DsRegisterReq{DsID: 1, IP: "127.0.0.1", Port: 7777}); err != nil {
+		btlog.Ins().Warn("dsClientRegisterError", "err", err)
+		return
+	}
+	<-ds.Done()
+}
+
 func dial() *btrouter.Client {
+	return dialWithPush(onPush)
+}
+
+func dialWithPush(onPush func(msgId uint32, data []byte)) *btrouter.Client {
 	cfg := config.ServerConfig
 	addr := cfg.Host + ":" + strconv.Itoa(cfg.TcpPort)
 	c, err := btrouter.Dial(addr, cfg.MaxPacketSize, btrouter.JSONCodec{}, onPush)

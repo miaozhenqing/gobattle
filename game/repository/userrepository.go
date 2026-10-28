@@ -33,15 +33,15 @@ func (r *UserRepository) Insert(ctx context.Context, user *model.UserModel) erro
 	if err != nil {
 		return err
 	}
-	uid, err := res.LastInsertId()
+	userId, err := res.LastInsertId()
 	if err != nil {
 		return err
 	}
-	user.UID = uid
+	user.UserId = userId
 	return nil
 }
 
-func (r *UserRepository) UpdateLastLoginTime(ctx context.Context, uid int64, loginTime int64) error {
-	_, err := r.tx.ExecContext(ctx, "UPDATE `user` SET lastLoginTime = ? WHERE uid = ?", loginTime, uid)
+func (r *UserRepository) UpdateLastLoginTime(ctx context.Context, userId int64, loginTime int64) error {
+	_, err := r.tx.ExecContext(ctx, "UPDATE `user` SET lastLoginTime = ? WHERE uid = ?", loginTime, userId)
 	return err
 }

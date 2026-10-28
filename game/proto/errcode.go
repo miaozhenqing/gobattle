@@ -21,4 +21,9 @@ const (
 	CodeMatchAlreadyIn    btrouter.Code = 10302 // 已在匹配中
 	CodeMatchNotIn        btrouter.Code = 10303 // 未在匹配中
 	CodeMatchNoDs         btrouter.Code = 10304 // 无可用DS服务器
+
+	// ==================== 战斗 ====================
+	CodeBattleNotFound   btrouter.Code = 10401 // 战斗不存在或不属于当前DS
+	CodeBattleStateError btrouter.Code = 10402 // 战斗状态不对
+	CodeBattleAlreadyIn  btrouter.Code = 10403 // 已在战斗中
 )

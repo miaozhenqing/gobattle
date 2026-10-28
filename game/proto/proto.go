@@ -7,16 +7,26 @@ const (
 	// ==================== DS ====================
 	MsgDsRegister  uint32 = 1201
 	MsgDsHeartBeat uint32 = 1202
-	MsgDsRelease   uint32 = 1203
 	// ==================== 匹配 ====================
 	MsgMatchStart  uint32 = 1301
 	MsgMatchCancel uint32 = 1302
 	// ==================== 局内 ====================
-	MsgDsBattleEnd uint32 = 1401
+	MsgDsBattleEnd   uint32 = 1401
+	MsgDsBattleStart uint32 = 1402
+	MsgBattleQuery   uint32 = 1403
 	// ==================== 推送 ====================
 	PushKick         uint32 = 51002
 	PushMatchSuccess uint32 = 51003
 	PushMatchFail    uint32 = 51004
+	PushBattleEnd    uint32 = 51005
+	// ==================== 推送给DS ====================
+	PushDsBattleAssign uint32 = 51101
+)
+
+// 战斗结束原因
+const (
+	BattleEndNormal = 1 // DS上报正常结束
+	BattleEndAbort  = 2 // 异常结束：开局超时、时长超限、DS断线
 )
 
 // ==============user
@@ -25,7 +35,7 @@ type LoginReq struct {
 }
 
 type LoginResp struct {
-	UID      int64  `json:"uid"`
+	UserId   int64  `json:"userId"`
 	Username string `json:"username"`
 	RoleName string `json:"roleName"`
 	IsNew    bool   `json:"isNew"` // 本次新建账号
@@ -34,13 +44,14 @@ type LoginResp struct {
 type KickPush struct{}
 
 type HeartBeatReq struct {
-	UID int64 `json:"uid"`
+	UserId int64 `json:"userId"`
 }
 
 type HeartBeatResp struct {
-	UID int64 `json:"uid"`
+	UserId int64 `json:"userId"`
 }
 
+// ==============ds
 type DsRegisterReq struct {
 	DsID int64  `json:"dsId"`
 	IP   string `json:"ip"`
@@ -57,13 +68,21 @@ type DsHeartBeatResp struct {
 	DsID int64 `json:"dsId"`
 }
 
-// ==============ds
-type DsReleaseReq struct {
+// ==============battle
+// DsBattleAssignPush 匹配成功后通知DS本局信息，DS按名单等玩家进房
+type DsBattleAssignPush struct {
+	BattleId int64              `json:"battleId"`
+	GameMode int                `json:"gameMode"`
+	MapID    int                `json:"mapId"`
+	Players  []*MatchPlayerInfo `json:"players"`
+}
+
+type DsBattleStartReq struct {
 	BattleId int64 `json:"battleId"`
 }
 
-type DsReleaseResp struct {
-	DsID int64 `json:"dsId"`
+type DsBattleStartResp struct {
+	BattleId int64 `json:"battleId"`
 }
 
 type DsBattleEndReq struct {
@@ -77,7 +96,23 @@ type DsBattleEndResp struct {
 	BattleId int64 `json:"battleId"`
 }
 
-// ==============ds
+type BattleQueryReq struct{}
+
+// BattleQueryResp 不在战斗中时 BattleId 为 0
+type BattleQueryResp struct {
+	BattleId int64  `json:"battleId"`
+	GameMode int    `json:"gameMode"`
+	MapID    int    `json:"mapId"`
+	DsIP     string `json:"dsIp"`
+	DsPort   int    `json:"dsPort"`
+	State    int    `json:"state"`
+}
+
+type BattleEndPush struct {
+	BattleId int64 `json:"battleId"`
+	Reason   int   `json:"reason"`
+}
+
 // ==============match
 type MatchStartReq struct {
 	GameMode int `json:"gameMode"`
@@ -94,7 +129,7 @@ type MatchCancelReq struct{}
 type MatchCancelResp struct{}
 
 type MatchPlayerInfo struct {
-	UID        int64 `json:"uid"`
+	UserId     int64 `json:"userId"`
 	MatchScore int   `json:"matchScore"`
 	Team       int   `json:"team"`
 }

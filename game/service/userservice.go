@@ -46,7 +46,7 @@ func (s *UserService) login(ctx context.Context, username string) (*LoginResult,
 			return &LoginResult{User: user, Created: true}, tx.User.Insert(ctx, user)
 		}
 		user.LastLoginTime = now
-		err = tx.User.UpdateLastLoginTime(ctx, user.UID, now)
+		err = tx.User.UpdateLastLoginTime(ctx, user.UserId, now)
 		return &LoginResult{User: user}, err
 	})
 }

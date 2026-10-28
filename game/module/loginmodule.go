@@ -38,19 +38,19 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (
 	}
 	user := res.User
 
-	old, err := m.SessionMgr.Bind(ctx.Conn(), user.UID)
+	old, err := m.SessionMgr.Bind(ctx.Conn(), user.UserId)
 	if err != nil {
 		return nil, proto.CodeAlreadyLogin
 	}
 	if old != nil {
 		m.kick(old)
 	}
-	btlog.Ins().Info("login", "uid", user.UID, "username", user.Username, "created", res.Created, "connId", ctx.Conn().GetID())
-	return &proto.LoginResp{UID: user.UID, Username: user.Username, RoleName: user.RoleName, IsNew: res.Created}, nil
+	btlog.Ins().Info("login", "userId", user.UserId, "username", user.Username, "created", res.Created, "connId", ctx.Conn().GetID())
+	return &proto.LoginResp{UserId: user.UserId, Username: user.Username, RoleName: user.RoleName, IsNew: res.Created}, nil
 }
 
 func (m *LoginModule) kick(old *btsession.Session) {
-	btlog.Ins().Info("kick", "uid", old.UID(), "connId", old.Conn().GetID())
+	btlog.Ins().Info("kick", "userId", old.UserId(), "connId", old.Conn().GetID())
 	_ = m.Router.Push(old.Conn(), proto.PushKick, &proto.KickPush{})
 	old.Conn().FlushAndStop()
 }
@@ -59,7 +59,7 @@ func (m *LoginModule) HeartBeat(requestContext *btrouter.RequestContext, req *pr
 	if !btsession.IsLoggedIn(requestContext) {
 		return nil, proto.CodeNotLogin
 	}
-	return &proto.HeartBeatResp{UID: req.UID}, nil
+	return &proto.HeartBeatResp{UserId: req.UserId}, nil
 }
 
 func validUsername(s string) bool {

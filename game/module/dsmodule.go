@@ -17,18 +17,22 @@ var dsKey = btnet.NewAttrKey[*model.DsModel]("module.ds")
 
 type DsModule struct {
 	*Deps
-	dsServers map[int64]*model.DsModel
-	mu        sync.RWMutex
+	dsById              map[int64]*model.DsModel
+	mu                  sync.RWMutex
+	unregisterListeners []func(ds *model.DsModel)
 }
 
 func NewDsModule(d *Deps) *DsModule {
-	return &DsModule{Deps: d, dsServers: make(map[int64]*model.DsModel)}
+	return &DsModule{Deps: d, dsById: make(map[int64]*model.DsModel)}
 }
 
 func (m *DsModule) RegisterRoutes(r *btrouter.Router) {
 	btrouter.HandlePublic(r, proto.MsgDsRegister, m.Register)
 	btrouter.HandlePublic(r, proto.MsgDsHeartBeat, m.HeartBeat)
-	btrouter.HandlePublic(r, proto.MsgDsRelease, m.Release)
+}
+
+func (m *DsModule) OnUnregister(fn func(ds *model.DsModel)) {
+	m.unregisterListeners = append(m.unregisterListeners, fn)
 }
 
 func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterReq) (*proto.DsRegisterResp, error) {
@@ -50,8 +54,8 @@ func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterR
 	dsKey.Set(conn, ds)
 
 	m.mu.Lock()
-	old := m.dsServers[ds.ID]
-	m.dsServers[ds.ID] = ds
+	old := m.dsById[ds.ID]
+	m.dsById[ds.ID] = ds
 	m.mu.Unlock()
 	if old != nil {
 		btlog.Ins().Info("dsReplaced", "dsId", ds.ID, "oldConnId", old.Conn.GetID(), "newConnId", conn.GetID())
@@ -75,33 +79,28 @@ func (m *DsModule) HeartBeat(ctx *btrouter.RequestContext, _ *proto.DsHeartBeatR
 	return &proto.DsHeartBeatResp{DsID: ds.ID}, nil
 }
 
-func (m *DsModule) Release(ctx *btrouter.RequestContext, req *proto.DsReleaseReq) (*proto.DsReleaseResp, error) {
-	ds, ok := dsKey.Get(ctx.Conn())
-	if !ok {
-		return nil, proto.CodeDsNotRegistered
-	}
-	if !tryRelease(ds) {
-		btlog.Ins().Warn("dsReleaseAlreadyIdle", "dsId", ds.ID, "battleId", req.BattleId, "connId", ds.Conn.GetID())
-	} else {
-		btlog.Ins().Info("dsRelease", "dsId", ds.ID, "battleId", req.BattleId, "connId", ds.Conn.GetID())
-	}
-	return &proto.DsReleaseResp{DsID: ds.ID}, nil
-}
-
 func (m *DsModule) unregister(ds *model.DsModel) {
 	m.mu.Lock()
-	if m.dsServers[ds.ID] == ds {
-		delete(m.dsServers, ds.ID)
+	if m.dsById[ds.ID] == ds {
+		delete(m.dsById, ds.ID)
 	}
 	m.mu.Unlock()
 	btlog.Ins().Info("dsUnregister", "dsId", ds.ID, "connId", ds.Conn.GetID())
+
+	for _, fn := range m.unregisterListeners {
+		fn(ds)
+	}
+}
+
+func GetDs(conn *btnet.Connection) (*model.DsModel, bool) {
+	return dsKey.Get(conn)
 }
 
 // 先随机选一个可用的
 func (m *DsModule) PickDs() *model.DsModel {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	for _, dsModel := range m.dsServers {
+	for _, dsModel := range m.dsById {
 		if tryOccupy(dsModel) {
 			return dsModel
 		}
@@ -109,10 +108,10 @@ func (m *DsModule) PickDs() *model.DsModel {
 	return nil
 }
 
-func tryOccupy(ds *model.DsModel) bool {
-	return ds.State.CompareAndSwap(model.DsStateIdle, model.DsStateBusy)
+func (m *DsModule) ReleaseDs(ds *model.DsModel) bool {
+	return ds.State.CompareAndSwap(model.DsStateBusy, model.DsStateIdle)
 }
 
-func tryRelease(ds *model.DsModel) bool {
-	return ds.State.CompareAndSwap(model.DsStateBusy, model.DsStateIdle)
+func tryOccupy(ds *model.DsModel) bool {
+	return ds.State.CompareAndSwap(model.DsStateIdle, model.DsStateBusy)
 }
