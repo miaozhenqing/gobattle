@@ -98,17 +98,17 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := s.Shutdown(ctx); err != nil {
-		btlog.Ins().Errorf("server shutdown error:%v", err)
+		btlog.Ins().Error("serverShutdownError", "err", err)
 	}
 
 	for _, g := range []*btnet.EventLoopGroup{boss, worker, biz} {
 		if err := g.ShutdownGracefully(ctx); err != nil {
-			btlog.Ins().Errorf("eventloop shutdown error:%v", err)
+			btlog.Ins().Error("eventloopShutdownError", "err", err)
 		}
 	}
 
 	if err := d.Close(); err != nil {
-		btlog.Ins().Errorf("db close error:%v", err)
+		btlog.Ins().Error("dbCloseError", "err", err)
 	}
 }
 
@@ -129,7 +129,7 @@ func runClient() {
 				case <-ticker.C:
 					call[proto.HeartBeatResp](client, proto.MsgHeartBeat, &proto.HeartBeatReq{UID: loginResp.UID})
 				case <-client.Done():
-					btlog.Ins().Infof("client done, stop heartbeat")
+					btlog.Ins().Info("clientHeartbeatStop")
 					return
 				}
 			}
@@ -139,12 +139,12 @@ func runClient() {
 	//模拟匹配
 	_, msErr := call[proto.MatchStartResp](client, proto.MsgMatchStart, &proto.MatchStartReq{GameMode: 1, MapID: 1})
 	if msErr != nil {
-		btlog.Ins().Infof(">>>>>match start error:%v", msErr)
+		btlog.Ins().Info("clientMatchStartError", "err", msErr)
 	}
 
 	//客户端等待
 	<-client.Done()
-	btlog.Ins().Infof("client done, exit runClient")
+	btlog.Ins().Info("clientExit")
 }
 
 func dial() *btrouter.Client {
@@ -158,7 +158,7 @@ func dial() *btrouter.Client {
 }
 
 func onPush(msgId uint32, data []byte) {
-	btlog.Ins().Infof("push msgId:%v data:%s", msgId, data)
+	btlog.Ins().Info("clientPush", "msgId", msgId, "data", string(data))
 }
 
 func call[Resp any](c *btrouter.Client, msgId uint32, req any) (*Resp, error) {

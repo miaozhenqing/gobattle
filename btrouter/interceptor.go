@@ -79,7 +79,7 @@ func (s *slowLog) Before(ctx *RequestContext, req any) error { return nil }
 
 func (s *slowLog) After(ctx *RequestContext, req, resp any, err error) {
 	if cost := time.Since(ctx.startAt); cost >= s.threshold {
-		btlog.Ins().Warnf("slow request, connID:%v msgId:%v(%s) cost:%v",
-			ctx.conn.GetID(), ctx.msgId, ctx.Method(), cost)
+		btlog.Ins().Warn("slowRequest", "connId", ctx.conn.GetID(), "msgId", ctx.msgId,
+			"method", ctx.Method(), "durationMs", cost.Milliseconds())
 	}
 }

@@ -25,7 +25,7 @@ type LoginResult struct {
 func (s *UserService) Login(ctx context.Context, username string) (*LoginResult, error) {
 	res, err := s.login(ctx, username)
 	if db.IsDupEntry(err) || db.IsDeadlock(err) {
-		btlog.Ins().Warnf("login conflict, retry, username:%v err:%v", username, err)
+		btlog.Ins().Warn("loginConflictRetry", "username", username, "err", err)
 		res, err = s.login(ctx, username)
 	}
 	if err != nil {

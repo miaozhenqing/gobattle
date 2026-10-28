@@ -54,7 +54,7 @@ func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterR
 	m.dsServers[ds.ID] = ds
 	m.mu.Unlock()
 	if old != nil {
-		btlog.Ins().Infof("ds replaced, dsID:%v oldConnID:%v, newConnID:%v", ds.ID, old.Conn.GetID(), conn.GetID())
+		btlog.Ins().Info("dsReplaced", "dsId", ds.ID, "oldConnId", old.Conn.GetID(), "newConnId", conn.GetID())
 		old.Conn.FlushAndStop()
 	}
 
@@ -63,7 +63,7 @@ func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterR
 		m.unregister(ds)
 	}()
 
-	btlog.Ins().Infof("ds register, dsID:%v addr:%v:%v, connID:%v", ds.ID, ds.IP, ds.Port, conn.GetID())
+	btlog.Ins().Info("dsRegister", "dsId", ds.ID, "ip", ds.IP, "port", ds.Port, "connId", conn.GetID())
 	return &proto.DsRegisterResp{DsID: ds.ID}, nil
 }
 
@@ -81,9 +81,9 @@ func (m *DsModule) Release(ctx *btrouter.RequestContext, req *proto.DsReleaseReq
 		return nil, proto.CodeDsNotRegistered
 	}
 	if !tryRelease(ds) {
-		btlog.Ins().Warnf("ds release but already idle, dsID:%v, BattleId:%v, connID:%v", ds.ID, req.BattleId, ds.Conn.GetID())
+		btlog.Ins().Warn("dsReleaseAlreadyIdle", "dsId", ds.ID, "battleId", req.BattleId, "connId", ds.Conn.GetID())
 	} else {
-		btlog.Ins().Infof("ds release, dsID:%v, BattleId:%v", ds.ID, req.BattleId)
+		btlog.Ins().Info("dsRelease", "dsId", ds.ID, "battleId", req.BattleId, "connId", ds.Conn.GetID())
 	}
 	return &proto.DsReleaseResp{DsID: ds.ID}, nil
 }
@@ -94,7 +94,7 @@ func (m *DsModule) unregister(ds *model.DsModel) {
 		delete(m.dsServers, ds.ID)
 	}
 	m.mu.Unlock()
-	btlog.Ins().Infof("ds unregister, dsID:%v, connID:%v", ds.ID, ds.Conn.GetID())
+	btlog.Ins().Info("dsUnregister", "dsId", ds.ID, "connId", ds.Conn.GetID())
 }
 
 // 先随机选一个可用的

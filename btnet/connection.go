@@ -125,7 +125,7 @@ func (c *Connection) writeRaw(data []byte) {
 	case c.msgChan <- data:
 	case <-c.cancelCtx.Done():
 	default:
-		btlog.Ins().Errorf("send queue full, connID:%v", c.GetID())
+		btlog.Ins().Error("sendQueueFull", "connId", c.GetID())
 		c.Stop()
 	}
 }
@@ -142,7 +142,7 @@ func (c *Connection) startRead() {
 
 	for {
 		if err := c.conn.SetReadDeadline(c.readDeadline(activeAt)); err != nil {
-			btlog.Ins().Errorf("set read deadline error, connID:%v, err:%v", c.GetID(), err)
+			btlog.Ins().Error("setReadDeadlineError", "connId", c.GetID(), "err", err)
 			return
 		}
 		//读取数据到数组
@@ -150,11 +150,11 @@ func (c *Connection) startRead() {
 		if err != nil {
 			var ne net.Error
 			if c.IsClosed() {
-				btlog.Ins().Infof("read done, connID:%v", c.GetID())
+				btlog.Ins().Info("readDone", "connId", c.GetID())
 			} else if errors.Is(err, io.EOF) {
-				btlog.Ins().Infof("peer closed, connID:%v", c.GetID())
+				btlog.Ins().Info("peerClosed", "connId", c.GetID())
 			} else if errors.As(err, &ne) && ne.Timeout() {
-				btlog.Ins().Infof("idle timeout, connID:%v", c.GetID())
+				btlog.Ins().Info("idleTimeout", "connId", c.GetID())
 			} else {
 				c.fireException(err)
 			}
@@ -201,7 +201,7 @@ func (c *Connection) startWrite() {
 				return
 			}
 		case <-c.cancelCtx.Done():
-			btlog.Ins().Infof("write done, connID:%v", c.GetID())
+			btlog.Ins().Info("writeDone", "connId", c.GetID())
 			return
 		case <-c.flushChan:
 			c.flush()
@@ -229,15 +229,15 @@ func (c *Connection) flush() {
 
 func (c *Connection) writeWithDeadline(data []byte, deadline time.Time) error {
 	if err := c.conn.SetWriteDeadline(deadline); err != nil {
-		btlog.Ins().Errorf("set write deadline error, connID:%v, err:%v", c.GetID(), err)
+		btlog.Ins().Error("setWriteDeadlineError", "connId", c.GetID(), "err", err)
 		return err
 	}
 	if _, err := c.conn.Write(data); err != nil {
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
-			btlog.Ins().Errorf("write timeout, connID:%v", c.GetID())
+			btlog.Ins().Error("writeTimeout", "connId", c.GetID())
 		} else {
-			btlog.Ins().Errorf("write error, connID:%v, error:%v", c.GetID(), err)
+			btlog.Ins().Error("writeError", "connId", c.GetID(), "err", err)
 		}
 		return err
 	}

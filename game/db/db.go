@@ -50,7 +50,7 @@ func Open(ctx context.Context, opts Options) (*sqlx.DB, error) {
 		_ = d.Close()
 		return nil, fmt.Errorf("ping mysql %s: %w", cfg.Addr, err)
 	}
-	btlog.Ins().Infof("mysql connected, addr:%v db:%v", cfg.Addr, cfg.DBName)
+	btlog.Ins().Info("mysqlConnected", "addr", cfg.Addr, "db", cfg.DBName)
 	return d, nil
 }
 

@@ -34,7 +34,7 @@ func newTx[T any](ctx context.Context, d *DB, fn func(tx *Store) (T, error)) (re
 		if err != nil {
 			// ctx 超时后驱动已自动回滚，此时返回 ErrTxDone，忽略
 			if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-				btlog.Ins().Errorf("rollback error:%v", rbErr)
+				btlog.Ins().Error("txRollbackError", "err", rbErr)
 			}
 			return
 		}

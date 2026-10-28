@@ -71,7 +71,7 @@ func (s *Server) acceptLoop() {
 		if s.connMgr.Len() >= s.opts.MaxConn {
 			//todo 先暴力sleep
 			time.Sleep(1000 * time.Millisecond)
-			btlog.Ins().Warn("over max conn")
+			btlog.Ins().Warn("overMaxConn", "maxConn", s.opts.MaxConn)
 			continue
 		}
 
@@ -79,7 +79,7 @@ func (s *Server) acceptLoop() {
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				//被关闭，永久退出
-				btlog.Ins().Infof("listener closed, exit loop:%v", err)
+				btlog.Ins().Info("listenerClosed", "err", err)
 				return
 			}
 
@@ -89,7 +89,7 @@ func (s *Server) acceptLoop() {
 			} else if delay *= 2; delay > maxAcceptDelay {
 				delay = maxAcceptDelay
 			}
-			btlog.Ins().Errorf("accept tcp error:%v, retry in %v", err, delay)
+			btlog.Ins().Error("acceptError", "err", err, "retryMs", delay.Milliseconds())
 			time.Sleep(delay)
 			continue
 		}
@@ -100,14 +100,14 @@ func (s *Server) acceptLoop() {
 		loop.Execute(func() {
 			connection, err2 := NewConnection(connID, tcp, &s.opts, loop, s.connMgr, s.initializer)
 			if err2 != nil {
-				btlog.Ins().Errorf("new connection error, connID:%v, remote:%v, err:%v", connID, tcp.RemoteAddr(), err2)
+				btlog.Ins().Error("newConnectionError", "connId", connID, "remote", tcp.RemoteAddr().String(), "err", err2)
 				tcp.Close()
 				return
 			}
 			connection.onInactiveDone = s.connMgr.done
 
 			if !s.connMgr.Add(connection) {
-				btlog.Ins().Infof("server closing, reject conn, connID:%v", connID)
+				btlog.Ins().Info("serverClosingRejectConn", "connId", connID)
 				tcp.Close()
 				return
 			}
@@ -146,7 +146,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		btlog.Ins().Errorf("shutdown timeout, force stop, conns:%v, maybe some OnInactive not propagated", len(conns))
+		// 超时强停，可能有部分 OnInactive 没传播完
+		btlog.Ins().Error("shutdownTimeoutForceStop", "conns", len(conns))
 		for _, c := range conns {
 			c.Stop()
 		}

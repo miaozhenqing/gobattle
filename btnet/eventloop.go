@@ -30,7 +30,7 @@ func (el *EventLoop) Execute(task func()) {
 	el.mu.Lock()
 	defer el.mu.Unlock()
 	if el.stopped {
-		btlog.Ins().Warnf("eventloop stopped, task dropped, loop:%v", el.name)
+		btlog.Ins().Warn("eventloopTaskDropped", "loop", el.name)
 		return
 	}
 	el.tasks = append(el.tasks, task)
@@ -68,7 +68,7 @@ func (el *EventLoop) run() {
 func (el *EventLoop) safeRun(task func()) {
 	defer func() {
 		if r := recover(); r != nil {
-			btlog.Ins().Errorf("eventloop panic, loop:%v err:%v  %s", el.name, r, debug.Stack())
+			btlog.Ins().Error("eventloopPanic", "loop", el.name, "panic", r, "stack", string(debug.Stack()))
 		}
 	}()
 	task()

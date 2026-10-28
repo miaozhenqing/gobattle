@@ -9,7 +9,10 @@ import (
 	"gobattle/btsession"
 	"gobattle/game/proto"
 	"maps"
+	"net"
+	"runtime/debug"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -76,7 +79,7 @@ func (m *MatchModule) onDisconnect(s *btsession.Session) {
 		return
 	}
 	m.removeLocked(p)
-	btlog.Ins().Infof("match remove on disconnect, uid:%v connID:%v", p.userId, p.conn.GetID())
+	btlog.Ins().Info("matchRemoveOnDisconnect", "uid", p.userId, "connId", p.conn.GetID())
 }
 
 func (m *MatchModule) RegisterRoutes(r *btrouter.Router) {
@@ -139,7 +142,7 @@ func (m *MatchModule) StartMatch(ctx *btrouter.RequestContext, req *proto.MatchS
 	m.addLocked(p)
 	m.mu.Unlock()
 
-	btlog.Ins().Infof("match start, uid:%v gameMode:%v mapID:%v matchScore:%v", p.userId, req.GameMode, req.MapID, p.matchScore)
+	btlog.Ins().Info("matchStart", "uid", p.userId, "gameMode", req.GameMode, "mapId", req.MapID, "matchScore", p.matchScore)
 	return &proto.MatchStartResp{BattleId: m.seq.Load(), GameMode: req.GameMode, MapID: req.MapID}, nil
 }
 
@@ -156,14 +159,14 @@ func (m *MatchModule) CancelMatch(ctx *btrouter.RequestContext, _ *proto.MatchCa
 		return nil, proto.CodeMatchNotIn
 	}
 	m.removeLocked(p)
-	btlog.Ins().Infof("match cancel, uid:%v", p.userId)
+	btlog.Ins().Info("matchCancel", "uid", p.userId)
 	return &proto.MatchCancelResp{}, nil
 }
 
 func (m *MatchModule) safeTick() {
 	defer func() {
 		if r := recover(); r != nil {
-			btlog.Ins().Errorf("match tick panic:%v", r)
+			btlog.Ins().Error("matchTickPanic", "panic", r, "stack", string(debug.Stack()))
 		}
 	}()
 	m.tick()
@@ -245,14 +248,19 @@ func (m *MatchModule) removeLocked(p *MatchPlayer) {
 }
 
 func (m *MatchModule) pushSuccess(g *matchGroup) {
+	playerIds := make([]int64, 0, len(g.players))
+	for _, p := range g.players {
+		playerIds = append(playerIds, p.userId)
+	}
+
 	ds := m.DsModule.PickDs()
 	if ds == nil {
-		btlog.Ins().Warnf("match no available ds, gameMode:%v mapID:%v players:%v", g.key.gameMode, g.key.mapID, len(g.players))
+		btlog.Ins().Warn("matchNoAvailableDs", "gameMode", g.key.gameMode, "mapId", g.key.mapID, "playerIds", playerIds)
 		// 通知客户端重新发起匹配
 		push := &proto.MatchFailPush{Code: uint32(proto.CodeMatchNoDs)}
 		for _, p := range g.players {
 			if err := m.Router.Push(p.conn, proto.PushMatchFail, push); err != nil {
-				btlog.Ins().Warnf("push match fail error, uid:%v err:%v", p.userId, err)
+				btlog.Ins().Warn("pushMatchFailError", "uid", p.userId, "err", err)
 			}
 		}
 		return
@@ -269,11 +277,14 @@ func (m *MatchModule) pushSuccess(g *matchGroup) {
 		push.Players = append(push.Players, &proto.MatchPlayerInfo{UID: p.userId, MatchScore: p.matchScore, Team: i % 2})
 	}
 
-	btlog.Ins().Infof("match success, BattleId:%v gameMode:%v mapID:%v ds:%v:%v players:%v",
-		push.BattleId, g.key.gameMode, g.key.mapID, ds.IP, ds.Port, len(g.players))
+	// 第一个玩家是最早入池的基准玩家
+	log := btlog.Ins().With("battleId", push.BattleId)
+	log.Info("matchSuccess", "gameMode", g.key.gameMode, "mapId", g.key.mapID,
+		"dsId", ds.ID, "dsAddr", net.JoinHostPort(ds.IP, strconv.Itoa(ds.Port)), "playerIds", playerIds,
+		"waitMs", time.Since(g.players[0].joinTime).Milliseconds())
 	for _, p := range g.players {
 		if err := m.Router.Push(p.conn, proto.PushMatchSuccess, push); err != nil {
-			btlog.Ins().Warnf("push match success error, BattleId:%v uid:%v err:%v", push.BattleId, p.userId, err)
+			log.Warn("pushMatchSuccessError", "uid", p.userId, "err", err)
 		}
 	}
 }

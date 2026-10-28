@@ -1,25 +1,21 @@
 package btlog
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 )
 
 type Logger interface {
-	Debug(v ...interface{})
-	Info(v ...interface{})
-	Warn(v ...interface{})
-	Error(v ...interface{})
+	Debug(msg string, args ...any)
+	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
+	Error(msg string, args ...any)
 
-	Debugf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
-	Warnf(format string, v ...interface{})
-	Errorf(format string, v ...interface{})
+	With(args ...any) Logger
 }
 
 var ins Logger = &slogLogger{
-	logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	logger: slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	})),
 }
@@ -39,34 +35,22 @@ type slogLogger struct {
 	logger *slog.Logger
 }
 
-func (b *slogLogger) Debug(v ...interface{}) {
-	b.logger.Debug(fmt.Sprint(v...))
+func (b *slogLogger) Debug(msg string, args ...any) {
+	b.logger.Debug(msg, args...)
 }
 
-func (b *slogLogger) Info(v ...interface{}) {
-	b.logger.Info(fmt.Sprint(v...))
+func (b *slogLogger) Info(msg string, args ...any) {
+	b.logger.Info(msg, args...)
 }
 
-func (b *slogLogger) Warn(v ...interface{}) {
-	b.logger.Warn(fmt.Sprint(v...))
+func (b *slogLogger) Warn(msg string, args ...any) {
+	b.logger.Warn(msg, args...)
 }
 
-func (b *slogLogger) Error(v ...interface{}) {
-	b.logger.Error(fmt.Sprint(v...))
+func (b *slogLogger) Error(msg string, args ...any) {
+	b.logger.Error(msg, args...)
 }
 
-func (b *slogLogger) Debugf(format string, v ...interface{}) {
-	b.logger.Debug(fmt.Sprintf(format, v...))
-}
-
-func (b *slogLogger) Infof(format string, v ...interface{}) {
-	b.logger.Info(fmt.Sprintf(format, v...))
-}
-
-func (b *slogLogger) Warnf(format string, v ...interface{}) {
-	b.logger.Warn(fmt.Sprintf(format, v...))
-}
-
-func (b *slogLogger) Errorf(format string, v ...interface{}) {
-	b.logger.Error(fmt.Sprintf(format, v...))
+func (b *slogLogger) With(args ...any) Logger {
+	return &slogLogger{logger: b.logger.With(args...)}
 }

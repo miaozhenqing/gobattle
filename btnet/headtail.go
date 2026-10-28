@@ -2,6 +2,7 @@ package btnet
 
 import (
 	"errors"
+	"fmt"
 	"gobattle/btlog"
 )
 
@@ -16,7 +17,7 @@ type headHandler struct{}
 func (h *headHandler) OnWrite(ctx *HandlerContext, msg any) {
 	data, ok := msg.([]byte)
 	if !ok {
-		btlog.Ins().Errorf("msg must be encoded frame []byte, connID:%v type:%T", ctx.GetConnection().GetID(), msg)
+		btlog.Ins().Error("writeMsgNotFrame", "connId", ctx.GetConnection().GetID(), "type", fmt.Sprintf("%T", msg))
 		return
 	}
 	ctx.GetConnection().writeRaw(data)
@@ -25,7 +26,7 @@ func (h *headHandler) OnWrite(ctx *HandlerContext, msg any) {
 type tailHandler struct{}
 
 func (t *tailHandler) OnRead(ctx *HandlerContext, msg any) {
-	btlog.Ins().Warnf("msg not handled, connID:%v type:%T", ctx.GetConnection().GetID(), msg)
+	btlog.Ins().Warn("msgNotHandled", "connId", ctx.GetConnection().GetID(), "type", fmt.Sprintf("%T", msg))
 }
 
 func (t *tailHandler) OnActive(ctx *HandlerContext) {}
@@ -37,9 +38,9 @@ func (t *tailHandler) OnInactive(ctx *HandlerContext) {
 func (t *tailHandler) OnException(ctx *HandlerContext, err error) {
 	var pe *PanicError
 	if errors.As(err, &pe) {
-		btlog.Ins().Errorf("unhandled exception, connID:%v err:%v\n%s", ctx.GetConnection().GetID(), err, pe.Stack)
+		btlog.Ins().Error("unhandledException", "connId", ctx.GetConnection().GetID(), "err", err, "stack", string(pe.Stack))
 	} else {
-		btlog.Ins().Errorf("unhandled exception, connID:%v err:%v", ctx.GetConnection().GetID(), err)
+		btlog.Ins().Error("unhandledException", "connId", ctx.GetConnection().GetID(), "err", err)
 	}
 	ctx.GetConnection().Stop()
 }

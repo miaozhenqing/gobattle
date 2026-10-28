@@ -121,7 +121,8 @@ func (hc *HandlerContext) invokeWrite(el *EventLoop, msg any) {
 func (hc *HandlerContext) callWrite(msg any) {
 	defer func() {
 		if r := recover(); r != nil {
-			btlog.Ins().Errorf("callWrite panic， connID:%v msg:%T err:%v s:%s", hc.GetConnection().GetID(), msg, r, debug.Stack())
+			btlog.Ins().Error("callWritePanic", "connId", hc.GetConnection().GetID(), "type", fmt.Sprintf("%T", msg),
+				"panic", r, "stack", string(debug.Stack()))
 		}
 	}()
 	hc.outHandler.OnWrite(hc, msg)
@@ -163,7 +164,7 @@ func (hc *HandlerContext) invokeInactive(executor *EventLoop) {
 func (hc *HandlerContext) callInactive() {
 	defer func() {
 		if r := recover(); r != nil {
-			btlog.Ins().Errorf("OnInactive panic, connID:%v err:%v\n%s", hc.GetConnection().GetID(), r, debug.Stack())
+			btlog.Ins().Error("onInactivePanic", "connId", hc.GetConnection().GetID(), "panic", r, "stack", string(debug.Stack()))
 			hc.FireInactive()
 		}
 	}()
@@ -192,7 +193,8 @@ func (hc *HandlerContext) handleException(err error) {
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			btlog.Ins().Errorf("handleException panic, connID:%v, painc:%v, casue:%v, stack:%s", hc.GetConnection().GetID(), r, err, debug.Stack())
+			btlog.Ins().Error("handleExceptionPanic", "connId", hc.GetConnection().GetID(), "panic", r, "err", err,
+				"stack", string(debug.Stack()))
 		}
 	}()
 	hc.exceptionHandler.OnException(hc, err)

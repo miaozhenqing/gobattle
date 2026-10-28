@@ -45,12 +45,12 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (
 	if old != nil {
 		m.kick(old)
 	}
-	btlog.Ins().Infof("login, uid:%v username:%v created:%v connID:%v", user.UID, user.Username, res.Created, ctx.Conn().GetID())
+	btlog.Ins().Info("login", "uid", user.UID, "username", user.Username, "created", res.Created, "connId", ctx.Conn().GetID())
 	return &proto.LoginResp{UID: user.UID, Username: user.Username, RoleName: user.RoleName, IsNew: res.Created}, nil
 }
 
 func (m *LoginModule) kick(old *btsession.Session) {
-	btlog.Ins().Infof("kick, uid:%v connID:%v", old.UID(), old.Conn().GetID())
+	btlog.Ins().Info("kick", "uid", old.UID(), "connId", old.Conn().GetID())
 	_ = m.Router.Push(old.Conn(), proto.PushKick, &proto.KickPush{})
 	old.Conn().FlushAndStop()
 }
