@@ -73,7 +73,7 @@ func main() {
 		Deps:         deps,
 	}
 	moduleDeps.DsModule = module.NewDsModule(moduleDeps)
-	matchModule := module.NewMatchModule(moduleDeps)
+	matchModule := module.NewBattleModule(moduleDeps)
 	r.RegisterModules(
 		module.NewLoginModule(moduleDeps),
 		moduleDeps.DsModule,
@@ -86,7 +86,7 @@ func main() {
 
 	//测试代码
 	//开始匹配
-	matchModule.Run()
+	matchModule.RunMatch()
 	go runClient()
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

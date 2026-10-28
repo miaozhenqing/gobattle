@@ -47,7 +47,7 @@ type matchGroup struct {
 	players []*MatchPlayer
 }
 
-type MatchModule struct {
+type BattleModule struct {
 	*Deps
 
 	mu      sync.Mutex
@@ -60,8 +60,8 @@ type MatchModule struct {
 	wg     sync.WaitGroup
 }
 
-func NewMatchModule(d *Deps) *MatchModule {
-	m := &MatchModule{
+func NewBattleModule(d *Deps) *BattleModule {
+	m := &BattleModule{
 		Deps:    d,
 		pools:   make(map[poolKey]map[int64]*MatchPlayer),
 		inMatch: make(map[int64]*MatchPlayer),
@@ -71,7 +71,7 @@ func NewMatchModule(d *Deps) *MatchModule {
 	return m
 }
 
-func (m *MatchModule) onDisconnect(s *btsession.Session) {
+func (m *BattleModule) onDisconnect(s *btsession.Session) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	p := m.inMatch[s.UID()]
@@ -82,12 +82,12 @@ func (m *MatchModule) onDisconnect(s *btsession.Session) {
 	btlog.Ins().Info("matchRemoveOnDisconnect", "uid", p.userId, "connId", p.conn.GetID())
 }
 
-func (m *MatchModule) RegisterRoutes(r *btrouter.Router) {
+func (m *BattleModule) RegisterRoutes(r *btrouter.Router) {
 	btrouter.Handle(r, proto.MsgMatchStart, m.StartMatch)
 	btrouter.Handle(r, proto.MsgMatchCancel, m.CancelMatch)
 }
 
-func (m *MatchModule) Run() {
+func (m *BattleModule) RunMatch() {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 	m.wg.Add(1)
@@ -106,14 +106,18 @@ func (m *MatchModule) Run() {
 	}()
 }
 
-func (m *MatchModule) Stop() {
+func (m *BattleModule) Stop() {
 	if m.cancel != nil {
 		m.cancel()
 	}
 	m.wg.Wait()
 }
 
-func (m *MatchModule) StartMatch(ctx *btrouter.RequestContext, req *proto.MatchStartReq) (*proto.MatchStartResp, error) {
+func (m *BattleModule) nextBattleID() int64 {
+	return m.seq.Add(1)
+}
+
+func (m *BattleModule) StartMatch(ctx *btrouter.RequestContext, req *proto.MatchStartReq) (*proto.MatchStartResp, error) {
 	if _, ok := modePlayerCount[req.GameMode]; !ok || req.MapID <= 0 {
 		return nil, proto.CodeMatchInvalidParam
 	}
@@ -143,10 +147,10 @@ func (m *MatchModule) StartMatch(ctx *btrouter.RequestContext, req *proto.MatchS
 	m.mu.Unlock()
 
 	btlog.Ins().Info("matchStart", "uid", p.userId, "gameMode", req.GameMode, "mapId", req.MapID, "matchScore", p.matchScore)
-	return &proto.MatchStartResp{BattleId: m.seq.Load(), GameMode: req.GameMode, MapID: req.MapID}, nil
+	return &proto.MatchStartResp{GameMode: req.GameMode, MapID: req.MapID}, nil
 }
 
-func (m *MatchModule) CancelMatch(ctx *btrouter.RequestContext, _ *proto.MatchCancelReq) (*proto.MatchCancelResp, error) {
+func (m *BattleModule) CancelMatch(ctx *btrouter.RequestContext, _ *proto.MatchCancelReq) (*proto.MatchCancelResp, error) {
 	s, ok := btsession.GetSession(ctx.Conn())
 	if !ok {
 		return nil, proto.CodeNotLogin
@@ -163,7 +167,7 @@ func (m *MatchModule) CancelMatch(ctx *btrouter.RequestContext, _ *proto.MatchCa
 	return &proto.MatchCancelResp{}, nil
 }
 
-func (m *MatchModule) safeTick() {
+func (m *BattleModule) safeTick() {
 	defer func() {
 		if r := recover(); r != nil {
 			btlog.Ins().Error("matchTickPanic", "panic", r, "stack", string(debug.Stack()))
@@ -173,7 +177,7 @@ func (m *MatchModule) safeTick() {
 }
 
 // 按入池先后为每人挑分数最近的人，凑够开局；等待超时的有多少人就带多少人开局
-func (m *MatchModule) tick() {
+func (m *BattleModule) tick() {
 	now := time.Now()
 
 	m.mu.Lock()
@@ -203,7 +207,7 @@ func (m *MatchModule) tick() {
 	}
 }
 
-func (m *MatchModule) pickLocked(p *MatchPlayer, need int, force bool) []*MatchPlayer {
+func (m *BattleModule) pickLocked(p *MatchPlayer, need int, force bool) []*MatchPlayer {
 	candidates := make([]*MatchPlayer, 0, len(m.pools[p.key]))
 	for _, c := range m.pools[p.key] {
 		if c.userId != p.userId && !c.conn.IsClosed() {
@@ -225,7 +229,7 @@ func (m *MatchModule) pickLocked(p *MatchPlayer, need int, force bool) []*MatchP
 	return picked
 }
 
-func (m *MatchModule) addLocked(p *MatchPlayer) {
+func (m *BattleModule) addLocked(p *MatchPlayer) {
 	pool := m.pools[p.key]
 	if pool == nil {
 		pool = make(map[int64]*MatchPlayer)
@@ -235,7 +239,7 @@ func (m *MatchModule) addLocked(p *MatchPlayer) {
 	m.inMatch[p.userId] = p
 }
 
-func (m *MatchModule) removeLocked(p *MatchPlayer) {
+func (m *BattleModule) removeLocked(p *MatchPlayer) {
 	if pool := m.pools[p.key]; pool[p.userId] == p {
 		delete(pool, p.userId)
 		if len(pool) == 0 {
@@ -247,7 +251,7 @@ func (m *MatchModule) removeLocked(p *MatchPlayer) {
 	}
 }
 
-func (m *MatchModule) pushSuccess(g *matchGroup) {
+func (m *BattleModule) pushSuccess(g *matchGroup) {
 	playerIds := make([]int64, 0, len(g.players))
 	for _, p := range g.players {
 		playerIds = append(playerIds, p.userId)
@@ -267,7 +271,7 @@ func (m *MatchModule) pushSuccess(g *matchGroup) {
 	}
 
 	push := &proto.MatchSuccessPush{
-		BattleId: m.seq.Add(1),
+		BattleId: m.nextBattleID(),
 		GameMode: g.key.gameMode,
 		MapID:    g.key.mapID,
 		DsIP:     ds.IP,
@@ -294,4 +298,8 @@ func abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+func (m *BattleModule) DsBattleEnd(ctx *btrouter.RequestContext, req *proto.DsBattleEndReq) (*proto.DsBattleEndResp, error) {
+	return &proto.DsBattleEndResp{}, nil
 }
