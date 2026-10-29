@@ -116,6 +116,7 @@ func (r *RouterHandler) freeze() {
 
 func funcName(fn any) string {
 	name := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
+	name = name[strings.LastIndexByte(name, '.')+1:]
 	return strings.TrimSuffix(name, "-fm")
 }
 

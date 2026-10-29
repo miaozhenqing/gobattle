@@ -49,7 +49,8 @@ type matchGroup struct {
 }
 
 type BattleModule struct {
-	*Deps
+	deps     *Deps
+	dsModule *DsModule
 
 	matchMu             sync.Mutex
 	matchPools          map[matchPoolKey]map[int64]*MatchPlayer
@@ -65,9 +66,10 @@ type BattleModule struct {
 	tickWg      sync.WaitGroup
 }
 
-func NewBattleModule(d *Deps) *BattleModule {
+func NewBattleModule(d *Deps, dsModule *DsModule) *BattleModule {
 	m := &BattleModule{
-		Deps:                d,
+		deps:                d,
+		dsModule:            dsModule,
 		matchPools:          make(map[matchPoolKey]map[int64]*MatchPlayer),
 		matchPlayerByUserId: make(map[int64]*MatchPlayer),
 		battleById:          make(map[int64]*model.BattleModel),
@@ -75,7 +77,7 @@ func NewBattleModule(d *Deps) *BattleModule {
 	}
 	m.battleIdSeq.Store(time.Now().UnixMilli())
 	d.SessionMgr.OnUnbind(m.onDisconnect)
-	d.DsModule.OnUnregister(m.onDsUnregister)
+	dsModule.OnUnregister(m.onDsUnregister)
 	return m
 }
 
@@ -90,12 +92,17 @@ func (m *BattleModule) onDisconnect(s *btsession.Session) {
 	btlog.Ins().Info("matchRemoveOnDisconnect", "userId", p.userId, "connId", p.conn.GetID())
 }
 
+// 客户端协议
 func (m *BattleModule) RegisterRoutes(r *btrouter.RouterHandler) {
 	btrouter.Handle(r, proto.MsgMatchStart, m.StartMatch)
 	btrouter.Handle(r, proto.MsgMatchCancel, m.CancelMatch)
 	btrouter.Handle(r, proto.MsgBattleQuery, m.QueryBattle)
-	btrouter.HandlePublic(r, proto.MsgDsBattleStart, m.DsBattleStart)
-	btrouter.HandlePublic(r, proto.MsgDsBattleEnd, m.DsBattleEnd)
+}
+
+// ds协议
+func (m *BattleModule) RegisterDsRoutes(r *btrouter.RouterHandler) {
+	btrouter.Handle(r, proto.MsgDsBattleStart, m.DsBattleStart)
+	btrouter.Handle(r, proto.MsgDsBattleEnd, m.DsBattleEnd)
 }
 
 func (m *BattleModule) RunMatch() {
@@ -272,7 +279,7 @@ func (m *BattleModule) startBattle(group *matchGroup) {
 		playerIds = append(playerIds, p.userId)
 	}
 
-	ds := m.DsModule.PickDs()
+	ds := m.dsModule.PickDs()
 	if ds == nil {
 		btlog.Ins().Warn("matchNoAvailableDs", "gameMode", group.poolKey.gameMode, "mapId", group.poolKey.mapID, "playerIds", playerIds)
 		m.pushMatchFail(group, proto.CodeMatchNoDs)
@@ -285,13 +292,13 @@ func (m *BattleModule) startBattle(group *matchGroup) {
 
 	// 先通知ds，ds收不到这局就开不了
 	assign := &proto.DsBattleAssignPush{BattleId: battle.ID, GameMode: battle.GameMode, MapID: battle.MapID, Players: players}
-	if err := m.Router.Push(ds.Conn, proto.PushDsBattleAssign, assign); err != nil {
+	if err := m.deps.DsRouterHandler.Push(ds.Conn, proto.PushDsBattleAssign, assign); err != nil {
 		log.Warn("pushDsBattleAssignError", "err", err)
 		// 玩家还没收到匹配成功，只推匹配失败，不推战斗结束
 		m.battleMu.Lock()
 		m.removeBattleLocked(battle)
 		m.battleMu.Unlock()
-		m.DsModule.ReleaseDs(ds)
+		m.dsModule.ReleaseDs(ds)
 		m.pushMatchFail(group, proto.CodeMatchNoDs)
 		return
 	}
@@ -309,7 +316,7 @@ func (m *BattleModule) startBattle(group *matchGroup) {
 		"dsAddr", net.JoinHostPort(ds.IP, strconv.Itoa(ds.Port)), "playerIds", playerIds,
 		"waitMs", time.Since(group.players[0].joinTime).Milliseconds())
 	for _, p := range group.players {
-		if err := m.Router.Push(p.conn, proto.PushMatchSuccess, push); err != nil {
+		if err := m.deps.GameRouterHandler.Push(p.conn, proto.PushMatchSuccess, push); err != nil {
 			log.Warn("pushMatchSuccessError", "userId", p.userId, "err", err)
 		}
 	}
@@ -319,7 +326,7 @@ func (m *BattleModule) startBattle(group *matchGroup) {
 func (m *BattleModule) pushMatchFail(group *matchGroup, code btrouter.Code) {
 	push := &proto.MatchFailPush{Code: uint32(code)}
 	for _, p := range group.players {
-		if err := m.Router.Push(p.conn, proto.PushMatchFail, push); err != nil {
+		if err := m.deps.GameRouterHandler.Push(p.conn, proto.PushMatchFail, push); err != nil {
 			btlog.Ins().Warn("pushMatchFailError", "userId", p.userId, "err", err)
 		}
 	}
@@ -426,7 +433,7 @@ func (m *BattleModule) DsBattleEnd(ctx *btrouter.RequestContext, req *proto.DsBa
 	m.removeBattleLocked(battle)
 	m.battleMu.Unlock()
 
-	m.DsModule.ReleaseDs(battle.Ds)
+	m.dsModule.ReleaseDs(battle.Ds)
 	// todo 结算落库
 	btlog.Ins().Info("battleEnd", "battleId", battle.ID, "dsId", battle.Ds.ID, "gameMode", battle.GameMode,
 		"durationMs", time.Now().UnixMilli()-battle.StartTime, "statistics", req.Statistics)
@@ -463,7 +470,7 @@ func (m *BattleModule) abortBattle(battle *model.BattleModel, reason string) {
 	if !removed {
 		return
 	}
-	m.DsModule.ReleaseDs(battle.Ds)
+	m.dsModule.ReleaseDs(battle.Ds)
 	btlog.Ins().Warn("battleAbort", "battleId", battle.ID, "dsId", battle.Ds.ID, "reason", reason, "state", state)
 	m.pushBattleEnd(battle, proto.BattleEndAbort)
 }
@@ -513,11 +520,11 @@ func (m *BattleModule) onDsUnregister(ds *model.DsModel) {
 func (m *BattleModule) pushBattleEnd(battle *model.BattleModel, reason int) {
 	push := &proto.BattleEndPush{BattleId: battle.ID, Reason: reason}
 	for _, p := range battle.Players {
-		s, ok := m.SessionMgr.Get(p.UserId)
+		s, ok := m.deps.SessionMgr.Get(p.UserId)
 		if !ok {
 			continue
 		}
-		if err := m.Router.Push(s.Conn(), proto.PushBattleEnd, push); err != nil {
+		if err := m.deps.GameRouterHandler.Push(s.Conn(), proto.PushBattleEnd, push); err != nil {
 			btlog.Ins().Warn("pushBattleEndError", "battleId", battle.ID, "userId", p.UserId, "err", err)
 		}
 	}

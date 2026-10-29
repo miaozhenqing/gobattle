@@ -14,19 +14,24 @@ import (
 var dsKey = btnet.NewAttrKey[*model.DsModel]("module.ds")
 
 type DsModule struct {
-	*Deps
+	deps                *Deps
 	dsById              map[int64]*model.DsModel
 	mu                  sync.RWMutex
 	unregisterListeners []func(ds *model.DsModel)
 }
 
 func NewDsModule(d *Deps) *DsModule {
-	return &DsModule{Deps: d, dsById: make(map[int64]*model.DsModel)}
+	return &DsModule{deps: d, dsById: make(map[int64]*model.DsModel)}
 }
 
 func (m *DsModule) RegisterRoutes(r *btrouter.RouterHandler) {
 	btrouter.HandlePublic(r, proto.MsgDsRegister, m.Register)
-	btrouter.HandlePublic(r, proto.MsgDsHeartBeat, m.HeartBeat)
+	btrouter.Handle(r, proto.MsgDsHeartBeat, m.HeartBeat)
+}
+
+func IsDsRegistered(ctx *btrouter.RequestContext) bool {
+	_, ok := dsKey.Get(ctx.Conn())
+	return ok
 }
 
 func (m *DsModule) OnUnregister(fn func(ds *model.DsModel)) {

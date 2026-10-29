@@ -1,9 +1,9 @@
 package service
 
 type ItemService struct {
-	*Deps
+	deps *Deps
 }
 
 func NewItemService(d *Deps) *ItemService {
-	return &ItemService{Deps: d}
+	return &ItemService{deps: d}
 }

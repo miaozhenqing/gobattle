@@ -10,11 +10,11 @@ import (
 )
 
 type LoginModule struct {
-	*Deps
+	deps *Deps
 }
 
 func NewLoginModule(d *Deps) *LoginModule {
-	return &LoginModule{Deps: d}
+	return &LoginModule{deps: d}
 }
 
 func (m *LoginModule) RegisterRoutes(r *btrouter.RouterHandler) {
@@ -30,15 +30,15 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (
 		return nil, proto.CodeAlreadyLogin
 	}
 
-	dbCtx, cancel := context.WithTimeout(ctx, m.QueryTimeout)
+	dbCtx, cancel := context.WithTimeout(ctx, m.deps.QueryTimeout)
 	defer cancel()
-	res, err := m.UserService.Login(dbCtx, req.Username)
+	res, err := m.deps.UserService.Login(dbCtx, req.Username)
 	if err != nil {
 		return nil, err
 	}
 	user := res.User
 
-	old, err := m.SessionMgr.Bind(ctx.Conn(), user.UserId)
+	old, err := m.deps.SessionMgr.Bind(ctx.Conn(), user.UserId)
 	if err != nil {
 		return nil, proto.CodeAlreadyLogin
 	}
@@ -51,7 +51,7 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (
 
 func (m *LoginModule) kick(old *btsession.Session) {
 	btlog.Ins().Info("kick", "userId", old.UserId(), "connId", old.Conn().GetID())
-	_ = m.Router.Push(old.Conn(), proto.PushKick, &proto.KickPush{})
+	_ = m.deps.GameRouterHandler.Push(old.Conn(), proto.PushKick, &proto.KickPush{})
 	old.Conn().FlushAndStop()
 }
 

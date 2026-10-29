@@ -5,22 +5,22 @@ import (
 	"gobattle/btnet"
 )
 
-var _ btnet.ActiveHandler = (*DsHandler)(nil)
+var _ btnet.ActiveHandler = (*DsSessionHandler)(nil)
 
-type DsHandler struct {
+type DsSessionHandler struct {
 	dsModule *DsModule
 }
 
-func NewDsHandler(dsModule *DsModule) *DsHandler {
-	return &DsHandler{dsModule: dsModule}
+func NewDsSessionHandler(dsModule *DsModule) *DsSessionHandler {
+	return &DsSessionHandler{dsModule: dsModule}
 }
 
-func (h *DsHandler) OnActive(ctx *btnet.HandlerContext) {
+func (h *DsSessionHandler) OnActive(ctx *btnet.HandlerContext) {
 	btlog.Ins().Info("dsConnActive", "connId", ctx.GetConnection().GetID())
 	ctx.FireActive()
 }
 
-func (h *DsHandler) OnInactive(ctx *btnet.HandlerContext) {
+func (h *DsSessionHandler) OnInactive(ctx *btnet.HandlerContext) {
 	conn := ctx.GetConnection()
 	btlog.Ins().Info("dsConnInactive", "connId", conn.GetID())
 	if ds, ok := dsKey.Get(conn); ok {

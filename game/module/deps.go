@@ -8,11 +8,14 @@ import (
 )
 
 type Deps struct {
-	Router       *btrouter.RouterHandler
-	SessionMgr   *btsession.Manager
-	QueryTimeout time.Duration
+	// 客户端连接的路由
+	GameRouterHandler *btrouter.RouterHandler
+	// ds连接的路由
+	DsRouterHandler *btrouter.RouterHandler
+	SessionMgr      *btsession.Manager
+	QueryTimeout    time.Duration
 
-	DsModule *DsModule
-
-	*service.Deps
+	// service
+	UserService *service.UserService
+	ItemService *service.ItemService
 }

@@ -10,11 +10,11 @@ import (
 )
 
 type UserService struct {
-	*Deps
+	deps *Deps
 }
 
 func NewUserService(d *Deps) *UserService {
-	return &UserService{Deps: d}
+	return &UserService{deps: d}
 }
 
 type LoginResult struct {
@@ -35,7 +35,7 @@ func (s *UserService) Login(ctx context.Context, username string) (*LoginResult,
 }
 
 func (s *UserService) login(ctx context.Context, username string) (*LoginResult, error) {
-	return repository.Tx(ctx, s.DB, func(tx *repository.Store) (*LoginResult, error) {
+	return repository.Tx(ctx, s.deps.DB, func(tx *repository.Store) (*LoginResult, error) {
 		now := time.Now().UnixMilli()
 		user, err := tx.User.GetByUsernameForUpdate(ctx, username)
 		if err != nil {

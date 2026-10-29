@@ -17,13 +17,76 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
-func main() {
-	cfg := config.ServerConfig
-	dbCfg := config.DBConfig
+// 方便统一关闭
+type serverWrapper struct {
+	name   string
+	server *btnet.Server
+	groups []*btnet.EventLoopGroup
+}
 
+func (b *serverWrapper) shutdown(ctx context.Context) {
+	if err := b.server.Shutdown(ctx); err != nil {
+		btlog.Ins().Error("serverShutdownError", "server", b.name, "err", err)
+	}
+	for _, g := range b.groups {
+		if err := g.ShutdownGracefully(ctx); err != nil {
+			btlog.Ins().Error("eventloopShutdownError", "server", b.name, "err", err)
+		}
+	}
+}
+
+func main() {
+	d := openDB()
+	deps := newModuleDeps(d)
+
+	dsModule := module.NewDsModule(deps)
+	loginModule := module.NewLoginModule(deps)
+	battleModule := module.NewBattleModule(deps, dsModule)
+	deps.GameRouterHandler.RegisterModules(loginModule, battleModule)
+	deps.DsRouterHandler.RegisterModules(dsModule)
+	battleModule.RegisterDsRoutes(deps.DsRouterHandler)
+
+	gameServer := newGameServer(deps)
+	dsServer := newDsServer(deps, dsModule)
+
+	if err := dsServer.server.Start(); err != nil {
+		panic("ds server start error")
+	}
+	if err := gameServer.server.Start(); err != nil {
+		panic("game server start error")
+	}
+
+	//开始匹配
+	battleModule.RunMatch()
+
+	//测试代码
+	go runClient()
+
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-sigCtx.Done()
+
+	battleModule.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	gameServer.shutdown(ctx)
+	dsServer.shutdown(ctx)
+
+	if err := d.Close(); err != nil {
+		btlog.Ins().Error("dbCloseError", "err", err)
+	}
+}
+
+func openDB() *sqlx.DB {
+	dbCfg := config.DBConfig
 	openCtx, openCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer openCancel()
 	d, err := db.Open(openCtx, db.Options{
 		Host:            dbCfg.Host,
 		Port:            dbCfg.Port,
@@ -35,101 +98,71 @@ func main() {
 		ConnMaxLifetime: dbCfg.ConnMaxLifetime,
 		ConnMaxIdleTime: dbCfg.ConnMaxIdleTime,
 	})
-	openCancel()
 	if err != nil {
 		panic(err)
 	}
+	return d
+}
 
-	//系统相关配置
-	boss := btnet.NewEventLoopGroup("boss", 1)
-	worker := btnet.NewEventLoopGroup("worker", cfg.IOLoopSize)
-	biz := btnet.NewEventLoopGroup("biz", cfg.BizLoopSize)
+func newModuleDeps(d *sqlx.DB) *module.Deps {
+	serviceDeps := &service.Deps{DB: repository.NewDB(d)}
+	serviceDeps.UserService = service.NewUserService(serviceDeps)
+	serviceDeps.ItemService = service.NewItemService(serviceDeps)
 
-	//game server
-	s := btnet.NewServer(cfg.Options, boss, worker)
-
-	//ds server，这里暂时公用boss和worker
-	dsServer := btnet.NewServer(config.DsServerConfig.Options, boss, worker)
-
-	//业务路由handler
-	r := btrouter.NewRouterHandler(btrouter.JSONCodec{})
-	r.AddInterceptor(
+	gameRouter := btrouter.NewRouterHandler(btrouter.JSONCodec{})
+	gameRouter.AddInterceptor(
 		btrouter.RateLimit(20, 40),
 		btrouter.Auth(btsession.IsLoggedIn),
 		btrouter.SlowLog(50*time.Millisecond),
 	)
 
-	mgr := btsession.NewManager()
-	sessionHandler := btsession.NewSessionHandler(mgr)
+	// ds为内部服务，不限流
+	dsRouter := btrouter.NewRouterHandler(btrouter.JSONCodec{})
+	dsRouter.AddInterceptor(
+		//btrouter.Auth(module.IsDsRegistered),
+		btrouter.SlowLog(50 * time.Millisecond),
+	)
+
+	return &module.Deps{
+		GameRouterHandler: gameRouter,
+		DsRouterHandler:   dsRouter,
+		SessionMgr:        btsession.NewManager(),
+		QueryTimeout:      config.DBConfig.QueryTimeout,
+		UserService:       serviceDeps.UserService,
+		ItemService:       serviceDeps.ItemService,
+	}
+}
+
+func newGameServer(deps *module.Deps) *serverWrapper {
+	cfg := config.ServerConfig
+	boss := btnet.NewEventLoopGroup("game-boss", 1)
+	worker := btnet.NewEventLoopGroup("game-worker", cfg.IOLoopSize)
+	biz := btnet.NewEventLoopGroup("game-biz", cfg.BizLoopSize)
+
+	s := btnet.NewServer(cfg.Options, boss, worker)
+	sessionHandler := btsession.NewSessionHandler(deps.SessionMgr)
 	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
 		p.AddLastGroup(biz, sessionHandler)
-		p.AddLastGroup(biz, r)
+		p.AddLastGroup(biz, deps.GameRouterHandler)
 	})
+	return &serverWrapper{name: "game", server: s, groups: []*btnet.EventLoopGroup{boss, worker, biz}}
+}
 
-	//业务相关配置
-	deps := &service.Deps{DB: repository.NewDB(d)}
-	deps.UserService = service.NewUserService(deps)
-	deps.ItemService = service.NewItemService(deps)
+func newDsServer(deps *module.Deps, dsModule *module.DsModule) *serverWrapper {
+	cfg := config.DsServerConfig
+	boss := btnet.NewEventLoopGroup("ds-boss", 1)
+	worker := btnet.NewEventLoopGroup("ds-worker", cfg.IOLoopSize)
+	biz := btnet.NewEventLoopGroup("ds-biz", cfg.BizLoopSize)
 
-	moduleDeps := &module.Deps{
-		Router:       r,
-		SessionMgr:   mgr,
-		QueryTimeout: dbCfg.QueryTimeout,
-		Deps:         deps,
-	}
-	moduleDeps.DsModule = module.NewDsModule(moduleDeps)
-	matchModule := module.NewBattleModule(moduleDeps)
-	r.RegisterModules(
-		module.NewLoginModule(moduleDeps),
-		moduleDeps.DsModule,
-		matchModule,
-	)
-
-	dsHandler := module.NewDsHandler(moduleDeps.DsModule)
-	dsServer.SetPipelineInitializer(func(p *btnet.Pipeline) {
+	s := btnet.NewServer(cfg.Options, boss, worker)
+	sessionHandler := module.NewDsSessionHandler(dsModule)
+	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
-		p.AddLastGroup(biz, dsHandler)
-		p.AddLastGroup(biz, r)
+		p.AddLastGroup(biz, sessionHandler)
+		p.AddLastGroup(biz, deps.DsRouterHandler)
 	})
-
-	if err = s.Start(); err != nil {
-		panic("server start error")
-	}
-	if err = dsServer.Start(); err != nil {
-		panic("ds server start error")
-	}
-
-	//测试代码
-	//开始匹配
-	matchModule.RunMatch()
-
-	go runClient()
-
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	<-sigCtx.Done()
-
-	matchModule.Stop()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.Shutdown(ctx); err != nil {
-		btlog.Ins().Error("serverShutdownError", "err", err)
-	}
-	if err := dsServer.Shutdown(ctx); err != nil {
-		btlog.Ins().Error("dsServerShutdownError", "err", err)
-	}
-
-	for _, g := range []*btnet.EventLoopGroup{boss, worker, biz} {
-		if err := g.ShutdownGracefully(ctx); err != nil {
-			btlog.Ins().Error("eventloopShutdownError", "err", err)
-		}
-	}
-
-	if err := d.Close(); err != nil {
-		btlog.Ins().Error("dbCloseError", "err", err)
-	}
+	return &serverWrapper{name: "ds", server: s, groups: []*btnet.EventLoopGroup{boss, worker, biz}}
 }
 
 func runClient() {
