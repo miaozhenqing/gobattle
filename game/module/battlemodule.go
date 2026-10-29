@@ -90,7 +90,7 @@ func (m *BattleModule) onDisconnect(s *btsession.Session) {
 	btlog.Ins().Info("matchRemoveOnDisconnect", "userId", p.userId, "connId", p.conn.GetID())
 }
 
-func (m *BattleModule) RegisterRoutes(r *btrouter.Router) {
+func (m *BattleModule) RegisterRoutes(r *btrouter.RouterHandler) {
 	btrouter.Handle(r, proto.MsgMatchStart, m.StartMatch)
 	btrouter.Handle(r, proto.MsgMatchCancel, m.CancelMatch)
 	btrouter.Handle(r, proto.MsgBattleQuery, m.QueryBattle)

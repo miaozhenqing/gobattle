@@ -25,20 +25,20 @@ const (
 
 // 战斗结束原因
 const (
-	BattleEndNormal = 1 // DS上报正常结束
-	BattleEndAbort  = 2 // 异常结束：开局超时、时长超限、DS断线
+	BattleEndNormal = 1
+	BattleEndAbort  = 2
 )
 
 // ==============user
 type LoginReq struct {
-	Username string `json:"username"` // 建号时同时作为角色名
+	Username string `json:"username"`
 }
 
 type LoginResp struct {
 	UserId   int64  `json:"userId"`
 	Username string `json:"username"`
 	RoleName string `json:"roleName"`
-	IsNew    bool   `json:"isNew"` // 本次新建账号
+	IsNew    bool   `json:"isNew"`
 }
 
 type KickPush struct{}

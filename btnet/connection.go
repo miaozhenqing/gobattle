@@ -44,11 +44,12 @@ type Connection struct {
 func NewConnection(id int64, conn *net.TCPConn, opts *Options, ioLoop *EventLoop, connMgr *ConnManager,
 	initializer PipelineInitializer) (*Connection, error) {
 	c := &Connection{
-		id:           id,
-		conn:         conn,
-		opts:         opts,
-		ioLoop:       ioLoop,
-		msgChan:      make(chan []byte, opts.SendQueueSize),
+		id:      id,
+		conn:    conn,
+		opts:    opts,
+		ioLoop:  ioLoop,
+		msgChan: make(chan []byte, opts.SendQueueSize),
+		// 解码器大概不会变，直接内部创建一个
 		frameDecoder: NewFrameDecoder(opts.MaxPacketSize, opts.IOReadBuffSize),
 		connMgr:      connMgr,
 		flushChan:    make(chan struct{}),

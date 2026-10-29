@@ -33,7 +33,6 @@ func (s *Server) SetPipelineInitializer(fn PipelineInitializer) {
 	s.initializer = fn
 }
 
-// Stop 强制关闭，不排空发送队列；优雅关闭用 Shutdown
 func (s *Server) Stop() {
 	s.closeListener()
 	s.connMgr.CloseAll()
@@ -133,7 +132,8 @@ func (s *Server) ConnManager() *ConnManager {
 }
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.closeListener()
-	conns := s.connMgr.close()
+	s.connMgr.markClosed()
+	conns := s.connMgr.snapshot()
 	for _, c := range conns {
 		c.FlushAndStop()
 	}
@@ -146,7 +146,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		// 超时强停，可能有部分 OnInactive 没传播完
+		// 超时强停
 		btlog.Ins().Error("shutdownTimeoutForceStop", "conns", len(conns))
 		for _, c := range conns {
 			c.Stop()

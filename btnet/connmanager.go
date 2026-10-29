@@ -1,7 +1,6 @@
 package btnet
 
 import (
-	"iter"
 	"maps"
 	"slices"
 	"sync"
@@ -46,24 +45,15 @@ func (cm *ConnManager) Get(connId int64) (*Connection, bool) {
 	return connection, ok
 }
 
-func (cm *ConnManager) All() iter.Seq[*Connection] {
-	return func(yield func(*Connection) bool) {
-		for _, c := range cm.snapshot() {
-			if !yield(c) {
-				return
-			}
-		}
-	}
-}
-
 func (cm *ConnManager) Broadcast(frame []byte) {
-	for c := range cm.All() {
+	for _, c := range cm.snapshot() {
 		if !c.IsClosed() {
 			c.GetPipeline().FireWrite(frame)
 		}
 	}
 }
 
+// 遍历map可能有并发问题，所以这里返回一个副本
 func (cm *ConnManager) snapshot() []*Connection {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -81,15 +71,15 @@ func (cm *ConnManager) Len() int {
 	return len(cm.connections)
 }
 
-func (cm *ConnManager) close() []*Connection {
+func (cm *ConnManager) markClosed() {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.closed = true
-	return slices.Collect(maps.Values(cm.connections))
 }
 
 func (cm *ConnManager) CloseAll() {
-	for _, c := range cm.close() {
+	cm.markClosed()
+	for _, c := range cm.snapshot() {
 		c.Stop()
 	}
 }

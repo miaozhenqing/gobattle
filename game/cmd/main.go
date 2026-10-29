@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"gobattle/btlog"
 	"gobattle/btnet"
 	"gobattle/btrouter"
@@ -45,9 +44,15 @@ func main() {
 	boss := btnet.NewEventLoopGroup("boss", 1)
 	worker := btnet.NewEventLoopGroup("worker", cfg.IOLoopSize)
 	biz := btnet.NewEventLoopGroup("biz", cfg.BizLoopSize)
+
+	//game server
 	s := btnet.NewServer(cfg.Options, boss, worker)
 
-	r := btrouter.NewRouter(btrouter.JSONCodec{})
+	//ds server，这里暂时公用boss和worker
+	dsServer := btnet.NewServer(config.DsServerConfig.Options, boss, worker)
+
+	//业务路由handler
+	r := btrouter.NewRouterHandler(btrouter.JSONCodec{})
 	r.AddInterceptor(
 		btrouter.RateLimit(20, 40),
 		btrouter.Auth(btsession.IsLoggedIn),
@@ -81,14 +86,24 @@ func main() {
 		matchModule,
 	)
 
+	dsHandler := module.NewDsHandler(moduleDeps.DsModule)
+	dsServer.SetPipelineInitializer(func(p *btnet.Pipeline) {
+		p.AddLast(btrouter.NewEnvelopeCodec())
+		p.AddLastGroup(biz, dsHandler)
+		p.AddLastGroup(biz, r)
+	})
+
 	if err = s.Start(); err != nil {
 		panic("server start error")
+	}
+	if err = dsServer.Start(); err != nil {
+		panic("ds server start error")
 	}
 
 	//测试代码
 	//开始匹配
 	matchModule.RunMatch()
-	go runDsClient()
+
 	go runClient()
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -101,6 +116,9 @@ func main() {
 	defer cancel()
 	if err := s.Shutdown(ctx); err != nil {
 		btlog.Ins().Error("serverShutdownError", "err", err)
+	}
+	if err := dsServer.Shutdown(ctx); err != nil {
+		btlog.Ins().Error("dsServerShutdownError", "err", err)
 	}
 
 	for _, g := range []*btnet.EventLoopGroup{boss, worker, biz} {
@@ -149,47 +167,11 @@ func runClient() {
 	btlog.Ins().Info("clientExit")
 }
 
-// 模拟DS：注册 → 收到分配 → 上报开局 → 5s后上报结束
-func runDsClient() {
-	var ds *btrouter.Client
-	ds = dialWithPush(func(msgId uint32, data []byte) {
-		btlog.Ins().Info("dsClientPush", "msgId", msgId, "data", string(data))
-		if msgId != proto.PushDsBattleAssign {
-			return
-		}
-		assign := &proto.DsBattleAssignPush{}
-		if err := json.Unmarshal(data, assign); err != nil {
-			btlog.Ins().Warn("dsClientDecodeError", "err", err)
-			return
-		}
-		// 回调在读循环里，不能直接同步 call
-		go func() {
-			if _, err := call[proto.DsBattleStartResp](ds, proto.MsgDsBattleStart, &proto.DsBattleStartReq{BattleId: assign.BattleId}); err != nil {
-				btlog.Ins().Warn("dsClientBattleStartError", "err", err)
-				return
-			}
-			time.Sleep(5 * time.Second)
-			endReq := &proto.DsBattleEndReq{BattleId: assign.BattleId, GameMode: assign.GameMode, Statistics: map[int]int{1: 10}}
-			if _, err := call[proto.DsBattleEndResp](ds, proto.MsgDsBattleEnd, endReq); err != nil {
-				btlog.Ins().Warn("dsClientBattleEndError", "err", err)
-			}
-		}()
-	})
-	defer ds.Close()
-
-	if _, err := call[proto.DsRegisterResp](ds, proto.MsgDsRegister, &proto.DsRegisterReq{DsID: 1, IP: "127.0.0.1", Port: 7777}); err != nil {
-		btlog.Ins().Warn("dsClientRegisterError", "err", err)
-		return
-	}
-	<-ds.Done()
-}
-
 func dial() *btrouter.Client {
-	return dialWithPush(onPush)
+	return dialWithPush(config.ServerConfig.Options, onPush)
 }
 
-func dialWithPush(onPush func(msgId uint32, data []byte)) *btrouter.Client {
-	cfg := config.ServerConfig
+func dialWithPush(cfg btnet.Options, onPush func(msgId uint32, data []byte)) *btrouter.Client {
 	addr := cfg.Host + ":" + strconv.Itoa(cfg.TcpPort)
 	c, err := btrouter.Dial(addr, cfg.MaxPacketSize, btrouter.JSONCodec{}, onPush)
 	if err != nil {

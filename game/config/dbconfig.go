@@ -2,6 +2,7 @@ package config
 
 import "time"
 
+// todo 后续从配置文件读取
 var DBConfig *dbConfig
 
 type dbConfig struct {
@@ -13,8 +14,8 @@ type dbConfig struct {
 
 	MaxOpenConns    int
 	MaxIdleConns    int
-	ConnMaxLifetime time.Duration
-	ConnMaxIdleTime time.Duration
+	ConnMaxLifetime time.Duration // 连接最大生命周期
+	ConnMaxIdleTime time.Duration // 连接最大空闲时间
 
 	// 单次业务请求内 DB 操作的总超时
 	QueryTimeout time.Duration
@@ -30,8 +31,8 @@ func init() {
 
 		MaxOpenConns:    20,
 		MaxIdleConns:    10,
-		ConnMaxLifetime: time.Hour,
-		ConnMaxIdleTime: 10 * time.Minute,
+		ConnMaxLifetime: 0 * time.Hour,
+		ConnMaxIdleTime: 30 * time.Minute,
 
 		QueryTimeout: 3 * time.Second,
 	}

@@ -17,7 +17,7 @@ func NewLoginModule(d *Deps) *LoginModule {
 	return &LoginModule{Deps: d}
 }
 
-func (m *LoginModule) RegisterRoutes(r *btrouter.Router) {
+func (m *LoginModule) RegisterRoutes(r *btrouter.RouterHandler) {
 	btrouter.HandlePublic(r, proto.MsgLogin, m.Login)
 	btrouter.Handle(r, proto.MsgHeartBeat, m.HeartBeat)
 }

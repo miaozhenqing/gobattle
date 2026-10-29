@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-//注册ds服务器，暂时和用户一个端口
-
 var dsKey = btnet.NewAttrKey[*model.DsModel]("module.ds")
 
 type DsModule struct {
@@ -26,7 +24,7 @@ func NewDsModule(d *Deps) *DsModule {
 	return &DsModule{Deps: d, dsById: make(map[int64]*model.DsModel)}
 }
 
-func (m *DsModule) RegisterRoutes(r *btrouter.Router) {
+func (m *DsModule) RegisterRoutes(r *btrouter.RouterHandler) {
 	btrouter.HandlePublic(r, proto.MsgDsRegister, m.Register)
 	btrouter.HandlePublic(r, proto.MsgDsHeartBeat, m.HeartBeat)
 }
@@ -61,11 +59,6 @@ func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterR
 		btlog.Ins().Info("dsReplaced", "dsId", ds.ID, "oldConnId", old.Conn.GetID(), "newConnId", conn.GetID())
 		old.Conn.FlushAndStop()
 	}
-
-	go func() {
-		<-conn.Context().Done()
-		m.unregister(ds)
-	}()
 
 	btlog.Ins().Info("dsRegister", "dsId", ds.ID, "ip", ds.IP, "port", ds.Port, "connId", conn.GetID())
 	return &proto.DsRegisterResp{DsID: ds.ID}, nil

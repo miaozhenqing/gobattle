@@ -8,7 +8,7 @@ import (
 )
 
 type Deps struct {
-	Router       *btrouter.Router
+	Router       *btrouter.RouterHandler
 	SessionMgr   *btsession.Manager
 	QueryTimeout time.Duration
 

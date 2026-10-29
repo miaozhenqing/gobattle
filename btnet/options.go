@@ -12,8 +12,8 @@ type Options struct {
 	IPVersion string
 
 	MaxPacketSize  int // 单帧最大长度（含帧头）
-	MaxConn        int
-	IOReadBuffSize int
+	MaxConn        int // 最大链接数量
+	IOReadBuffSize int // 读缓冲区大小
 
 	WriteTimeout  time.Duration // 单次写 socket 超时，<=0 表示不设置
 	SendQueueSize int           // 每个连接的发送队列长度

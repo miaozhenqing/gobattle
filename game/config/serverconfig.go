@@ -3,9 +3,9 @@ package config
 import (
 	"gobattle/btnet"
 	"runtime"
-	"time"
 )
 
+// todo 后续从配置文件读取
 var ServerConfig *serverConfig
 
 type serverConfig struct {
@@ -19,10 +19,9 @@ type serverConfig struct {
 
 func init() {
 	opts := btnet.DefaultOptions()
-	opts.WriteTimeout = time.Second
 	ServerConfig = &serverConfig{
 		Options:     opts,
 		IOLoopSize:  runtime.NumCPU(),
-		BizLoopSize: 5,
+		BizLoopSize: 10,
 	}
 }

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var _ btnet.InHandler = (*Router)(nil)
+var _ btnet.InHandler = (*RouterHandler)(nil)
 
 type route struct {
 	method string
@@ -22,21 +22,21 @@ type route struct {
 	call   func(ctx *RequestContext, req any) (any, error) // 业务方法
 }
 
-type Router struct {
+type RouterHandler struct {
 	codec        Codec
 	routes       map[uint32]*route
 	interceptors []Interceptor
 	frozen       atomic.Bool
 }
 
-func NewRouter(codec Codec) *Router {
+func NewRouterHandler(codec Codec) *RouterHandler {
 	if codec == nil {
 		codec = JSONCodec{}
 	}
-	return &Router{codec: codec, routes: make(map[uint32]*route)}
+	return &RouterHandler{codec: codec, routes: make(map[uint32]*route)}
 }
 
-func (r *Router) AddInterceptor(its ...Interceptor) {
+func (r *RouterHandler) AddInterceptor(its ...Interceptor) {
 	if r.frozen.Load() {
 		panic("use interceptor after dispatch started")
 	}
@@ -49,25 +49,25 @@ func (r *Router) AddInterceptor(its ...Interceptor) {
 }
 
 type Module interface {
-	RegisterRoutes(r *Router)
+	RegisterRoutes(r *RouterHandler)
 }
 
-func (r *Router) RegisterModules(ms ...Module) {
+func (r *RouterHandler) RegisterModules(ms ...Module) {
 	for _, m := range ms {
 		m.RegisterRoutes(r)
 	}
 }
 
-func Handle[Req any, Resp any](r *Router, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error)) {
+func Handle[Req any, Resp any](r *RouterHandler, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error)) {
 	r.addRoute(msgId, newRoute(r, msgId, fn, false))
 }
 
 // HandlePublic 注册免登录路由（登录、心跳）
-func HandlePublic[Req any, Resp any](r *Router, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error)) {
+func HandlePublic[Req any, Resp any](r *RouterHandler, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error)) {
 	r.addRoute(msgId, newRoute(r, msgId, fn, true))
 }
 
-func newRoute[Req any, Resp any](r *Router, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error), public bool) *route {
+func newRoute[Req any, Resp any](r *RouterHandler, msgId uint32, fn func(*RequestContext, *Req) (*Resp, error), public bool) *route {
 	if fn == nil {
 		panic(fmt.Sprintf("handler of msgId %d is nil", msgId))
 	}
@@ -91,14 +91,14 @@ func newRoute[Req any, Resp any](r *Router, msgId uint32, fn func(*RequestContex
 	}
 }
 
-func (r *Router) unmarshal(payload []byte, req any) error {
+func (r *RouterHandler) unmarshal(payload []byte, req any) error {
 	if len(payload) == 0 { // 无参请求可不带 payload
 		return nil
 	}
 	return r.codec.Unmarshal(payload, req)
 }
 
-func (r *Router) addRoute(msgId uint32, rt *route) {
+func (r *RouterHandler) addRoute(msgId uint32, rt *route) {
 	if r.frozen.Load() {
 		panic(fmt.Sprintf("register msgId %d after dispatch started", msgId))
 	}
@@ -108,7 +108,7 @@ func (r *Router) addRoute(msgId uint32, rt *route) {
 	r.routes[msgId] = rt
 }
 
-func (r *Router) freeze() {
+func (r *RouterHandler) freeze() {
 	if !r.frozen.Load() {
 		r.frozen.Store(true)
 	}
@@ -119,7 +119,7 @@ func funcName(fn any) string {
 	return strings.TrimSuffix(name, "-fm")
 }
 
-func (r *Router) OnRead(ctx *btnet.HandlerContext, msg any) {
+func (r *RouterHandler) OnRead(ctx *btnet.HandlerContext, msg any) {
 	env, ok := msg.(*Envelope)
 	if !ok {
 		ctx.FireRead(msg)
@@ -128,7 +128,7 @@ func (r *Router) OnRead(ctx *btnet.HandlerContext, msg any) {
 	r.dispatch(ctx.GetConnection(), env)
 }
 
-func (r *Router) dispatch(conn *btnet.Connection, env *Envelope) {
+func (r *RouterHandler) dispatch(conn *btnet.Connection, env *Envelope) {
 	r.freeze()
 	if env.Type != MsgTypeRequest {
 		btlog.Ins().Warn("unexpectedMsgType", "connId", conn.GetID(), "type", env.Type, "msgId", env.MsgId)
@@ -147,7 +147,7 @@ func (r *Router) dispatch(conn *btnet.Connection, env *Envelope) {
 	r.reply(conn, env, resp, err)
 }
 
-func (r *Router) invoke(ctx *RequestContext, rt *route, payload []byte) (resp any, err error) {
+func (r *RouterHandler) invoke(ctx *RequestContext, rt *route, payload []byte) (resp any, err error) {
 	req, err := r.safeDecode(ctx, rt, payload)
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (r *Router) invoke(ctx *RequestContext, rt *route, payload []byte) (resp an
 	return resp, err
 }
 
-func (r *Router) safeDecode(ctx *RequestContext, rt *route, payload []byte) (req any, err error) {
+func (r *RouterHandler) safeDecode(ctx *RequestContext, rt *route, payload []byte) (req any, err error) {
 	defer r.recoverPanic(ctx, rt, "decode", nil, &err)
 	if req, err = rt.decode(payload); err != nil {
 		btlog.Ins().Warn("decodeError", "connId", ctx.conn.GetID(), "msgId", ctx.msgId, "method", rt.method, "err", err)
@@ -178,23 +178,23 @@ func (r *Router) safeDecode(ctx *RequestContext, rt *route, payload []byte) (req
 	return req, nil
 }
 
-func (r *Router) safeBefore(ctx *RequestContext, rt *route, it Interceptor, req any) (err error) {
+func (r *RouterHandler) safeBefore(ctx *RequestContext, rt *route, it Interceptor, req any) (err error) {
 	defer r.recoverPanic(ctx, rt, "interceptor.Before", it, &err)
 	return it.Before(ctx, req)
 }
 
-func (r *Router) safeCall(ctx *RequestContext, rt *route, req any) (resp any, err error) {
+func (r *RouterHandler) safeCall(ctx *RequestContext, rt *route, req any) (resp any, err error) {
 	defer r.recoverPanic(ctx, rt, "handler", nil, &err)
 	return rt.call(ctx, req)
 }
 
-func (r *Router) safeAfter(ctx *RequestContext, rt *route, it Interceptor, req, resp any, err error) {
+func (r *RouterHandler) safeAfter(ctx *RequestContext, rt *route, it Interceptor, req, resp any, err error) {
 	var ignored error
 	defer r.recoverPanic(ctx, rt, "interceptor.After", it, &ignored)
 	it.After(ctx, req, resp, err)
 }
 
-func (r *Router) recoverPanic(ctx *RequestContext, rt *route, stage string, it Interceptor, err *error) {
+func (r *RouterHandler) recoverPanic(ctx *RequestContext, rt *route, stage string, it Interceptor, err *error) {
 	if p := recover(); p != nil {
 		if it != nil {
 			stage = fmt.Sprintf("%s(%T)", stage, it)
@@ -205,7 +205,7 @@ func (r *Router) recoverPanic(ctx *RequestContext, rt *route, stage string, it I
 	}
 }
 
-func (r *Router) reply(conn *btnet.Connection, req *Envelope, resp any, err error) {
+func (r *RouterHandler) reply(conn *btnet.Connection, req *Envelope, resp any, err error) {
 	code := r.toCode(conn, req, err)
 	if req.Seq == 0 {
 		return
@@ -224,7 +224,7 @@ func (r *Router) reply(conn *btnet.Connection, req *Envelope, resp any, err erro
 	_ = conn.Write(out)
 }
 
-func (r *Router) toCode(conn *btnet.Connection, env *Envelope, err error) Code {
+func (r *RouterHandler) toCode(conn *btnet.Connection, env *Envelope, err error) Code {
 	if err == nil {
 		return CodeOK
 	}
@@ -240,7 +240,7 @@ func (r *Router) toCode(conn *btnet.Connection, env *Envelope, err error) Code {
 	return CodeInternal
 }
 
-func (r *Router) Push(conn *btnet.Connection, msgId uint32, v any) error {
+func (r *RouterHandler) Push(conn *btnet.Connection, msgId uint32, v any) error {
 	data, err := r.codec.Marshal(v)
 	if err != nil {
 		return err
@@ -248,7 +248,7 @@ func (r *Router) Push(conn *btnet.Connection, msgId uint32, v any) error {
 	return conn.Write(&Envelope{Type: MsgTypePush, MsgId: msgId, Payload: data})
 }
 
-func (r *Router) Broadcast(mgr *btnet.ConnManager, msgId uint32, v any) error {
+func (r *RouterHandler) Broadcast(mgr *btnet.ConnManager, msgId uint32, v any) error {
 	data, err := r.codec.Marshal(v)
 	if err != nil {
 		return err
