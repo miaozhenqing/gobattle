@@ -74,7 +74,7 @@ func runInitializer(init PipelineInitializer, p *Pipeline) (err error) {
 	return nil
 }
 
-func (c *Connection) GetID() int64 {
+func (c *Connection) GetId() int64 {
 	return c.id
 }
 func (c *Connection) Start() {
@@ -106,7 +106,7 @@ func (c *Connection) IsClosed() bool {
 
 func (c *Connection) destroy() {
 	c.conn.Close()
-	c.connMgr.Remove(c.GetID())
+	c.connMgr.Remove(c.GetId())
 }
 
 func (c *Connection) Write(msg any) error {
@@ -126,7 +126,7 @@ func (c *Connection) writeRaw(data []byte) {
 	case c.msgChan <- data:
 	case <-c.cancelCtx.Done():
 	default:
-		btlog.Ins().Error("sendQueueFull", "connId", c.GetID())
+		btlog.Ins().Error("sendQueueFull", "connId", c.GetId())
 		c.Stop()
 	}
 }
@@ -143,7 +143,7 @@ func (c *Connection) startRead() {
 
 	for {
 		if err := c.conn.SetReadDeadline(c.readDeadline(activeAt)); err != nil {
-			btlog.Ins().Error("setReadDeadlineError", "connId", c.GetID(), "err", err)
+			btlog.Ins().Error("setReadDeadlineError", "connId", c.GetId(), "err", err)
 			return
 		}
 		//读取数据到数组
@@ -151,11 +151,11 @@ func (c *Connection) startRead() {
 		if err != nil {
 			var ne net.Error
 			if c.IsClosed() {
-				btlog.Ins().Info("readDone", "connId", c.GetID())
+				btlog.Ins().Info("readDone", "connId", c.GetId())
 			} else if errors.Is(err, io.EOF) {
-				btlog.Ins().Info("peerClosed", "connId", c.GetID())
+				btlog.Ins().Info("peerClosed", "connId", c.GetId())
 			} else if errors.As(err, &ne) && ne.Timeout() {
-				btlog.Ins().Info("idleTimeout", "connId", c.GetID())
+				btlog.Ins().Info("idleTimeout", "connId", c.GetId())
 			} else {
 				c.fireException(err)
 			}
@@ -202,7 +202,7 @@ func (c *Connection) startWrite() {
 				return
 			}
 		case <-c.cancelCtx.Done():
-			btlog.Ins().Info("writeDone", "connId", c.GetID())
+			btlog.Ins().Info("writeDone", "connId", c.GetId())
 			return
 		case <-c.flushChan:
 			c.flush()
@@ -230,15 +230,15 @@ func (c *Connection) flush() {
 
 func (c *Connection) writeWithDeadline(data []byte, deadline time.Time) error {
 	if err := c.conn.SetWriteDeadline(deadline); err != nil {
-		btlog.Ins().Error("setWriteDeadlineError", "connId", c.GetID(), "err", err)
+		btlog.Ins().Error("setWriteDeadlineError", "connId", c.GetId(), "err", err)
 		return err
 	}
 	if _, err := c.conn.Write(data); err != nil {
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
-			btlog.Ins().Error("writeTimeout", "connId", c.GetID())
+			btlog.Ins().Error("writeTimeout", "connId", c.GetId())
 		} else {
-			btlog.Ins().Error("writeError", "connId", c.GetID(), "err", err)
+			btlog.Ins().Error("writeError", "connId", c.GetId(), "err", err)
 		}
 		return err
 	}

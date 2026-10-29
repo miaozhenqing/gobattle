@@ -94,19 +94,19 @@ func (s *Server) acceptLoop() {
 		}
 		delay = 0
 
-		connID := generalConnID()
-		loop := s.workerGroup.Next(connID)
+		connId := generalConnId()
+		loop := s.workerGroup.Next(connId)
 		loop.Execute(func() {
-			connection, err2 := NewConnection(connID, tcp, &s.opts, loop, s.connMgr, s.initializer)
+			connection, err2 := NewConnection(connId, tcp, &s.opts, loop, s.connMgr, s.initializer)
 			if err2 != nil {
-				btlog.Ins().Error("newConnectionError", "connId", connID, "remote", tcp.RemoteAddr().String(), "err", err2)
+				btlog.Ins().Error("newConnectionError", "connId", connId, "remote", tcp.RemoteAddr().String(), "err", err2)
 				tcp.Close()
 				return
 			}
 			connection.onInactiveDone = s.connMgr.done
 
 			if !s.connMgr.Add(connection) {
-				btlog.Ins().Info("serverClosingRejectConn", "connId", connID)
+				btlog.Ins().Info("serverClosingRejectConn", "connId", connId)
 				tcp.Close()
 				return
 			}
@@ -115,10 +115,10 @@ func (s *Server) acceptLoop() {
 	}
 }
 
-var connIDCounter atomic.Int64
+var connIdCounter atomic.Int64
 
-func generalConnID() int64 {
-	return connIDCounter.Add(1)
+func generalConnId() int64 {
+	return connIdCounter.Add(1)
 }
 
 func (s *Server) closeListener() {

@@ -6,7 +6,7 @@ import (
 	"gobattle/btlog"
 	"gobattle/btsession"
 	"gobattle/game/model"
-	"gobattle/game/proto"
+	"gobattle/game/protocol"
 	"maps"
 	"net"
 	"slices"
@@ -28,7 +28,7 @@ var modePlayerCount = map[int]int{
 
 type matchPoolKey struct {
 	gameMode int
-	mapID    int
+	mapId    int
 }
 
 type matchPlayer struct {
@@ -81,15 +81,15 @@ func (s *MatchService) Stop() {
 
 func (s *MatchService) Join(session *btsession.Session, gameMode, mapId int) error {
 	if _, ok := modePlayerCount[gameMode]; !ok || mapId <= 0 {
-		return proto.CodeMatchInvalidParam
+		return protocol.CodeMatchInvalidParam
 	}
 	if s.battleService.GetUserBattle(session.UserId()) != nil {
-		return proto.CodeBattleAlreadyIn
+		return protocol.CodeBattleAlreadyIn
 	}
 	p := &matchPlayer{
 		userId:     session.UserId(),
 		matchScore: defaultMatchScore,
-		poolKey:    matchPoolKey{gameMode: gameMode, mapID: mapId},
+		poolKey:    matchPoolKey{gameMode: gameMode, mapId: mapId},
 		joinTime:   time.Now(),
 		session:    session,
 	}
@@ -99,7 +99,7 @@ func (s *MatchService) Join(session *btsession.Session, gameMode, mapId int) err
 		// 已在匹配中
 		if !old.offline() {
 			s.mu.Unlock()
-			return proto.CodeMatchAlreadyIn
+			return protocol.CodeMatchAlreadyIn
 		}
 		// 旧连接已关闭但断线回调还没执行
 		s.removeFromPoolLocked(old)
@@ -116,7 +116,7 @@ func (s *MatchService) Cancel(session *btsession.Session) error {
 	defer s.mu.Unlock()
 	p := s.matchPlayerByUserId[session.UserId()]
 	if p == nil || p.session != session {
-		return proto.CodeMatchNotIn
+		return protocol.CodeMatchNotIn
 	}
 	s.removeFromPoolLocked(p)
 	btlog.Ins().Info("matchCancel", "userId", p.userId)
@@ -131,7 +131,7 @@ func (s *MatchService) onDisconnect(session *btsession.Session) {
 		return
 	}
 	s.removeFromPoolLocked(p)
-	btlog.Ins().Info("matchRemoveOnDisconnect", "userId", p.userId, "connId", session.Conn().GetID())
+	btlog.Ins().Info("matchRemoveOnDisconnect", "userId", p.userId, "connId", session.Conn().GetId())
 }
 
 // 按入池先后为每人挑分数最近的人，凑够开局；等待超时的有多少人就带多少人开局
@@ -215,28 +215,28 @@ func (s *MatchService) startBattle(group *matchGroup) {
 		players = append(players, &model.BattlePlayer{UserId: p.userId, MatchScore: p.matchScore, Team: i % 2})
 	}
 
-	battle, err := s.battleService.Create(group.poolKey.gameMode, group.poolKey.mapID, players)
+	battle, err := s.battleService.Create(group.poolKey.gameMode, group.poolKey.mapId, players)
 	if err != nil {
 		s.pushMatchFail(group, err)
 		return
 	}
 
 	ds := battle.Ds
-	push := &proto.MatchSuccessPush{
-		BattleId: battle.ID,
+	push := &protocol.MatchSuccessPush{
+		BattleId: battle.Id,
 		GameMode: battle.GameMode,
-		MapID:    battle.MapID,
+		MapId:    battle.MapId,
 		DsIP:     ds.IP,
 		DsPort:   ds.Port,
 		Players:  toPlayerInfos(battle.Players),
 	}
-	log := btlog.Ins().With("battleId", battle.ID, "dsId", ds.ID)
+	log := btlog.Ins().With("battleId", battle.Id, "dsId", ds.Id)
 	// 第一个玩家是最早入池的基准玩家
-	log.Info("matchSuccess", "gameMode", battle.GameMode, "mapId", battle.MapID,
+	log.Info("matchSuccess", "gameMode", battle.GameMode, "mapId", battle.MapId,
 		"dsAddr", net.JoinHostPort(ds.IP, strconv.Itoa(ds.Port)), "playerIds", playerIdsOf(battle.Players),
 		"waitMs", time.Since(group.players[0].joinTime).Milliseconds())
 	for _, p := range group.players {
-		if err := s.pushService.PushUser(p.userId, proto.PushMatchSuccess, push); err != nil {
+		if err := s.pushService.PushUser(p.userId, protocol.PushMatchSuccess, push); err != nil {
 			log.Warn("pushMatchSuccessError", "userId", p.userId, "err", err)
 		}
 	}
@@ -244,11 +244,11 @@ func (s *MatchService) startBattle(group *matchGroup) {
 
 // 通知客户端重新发起匹配
 func (s *MatchService) pushMatchFail(group *matchGroup, err error) {
-	code := proto.CodeMatchNoDs
+	code := protocol.CodeMatchNoDs
 	errors.As(err, &code)
-	push := &proto.MatchFailPush{Code: uint32(code)}
+	push := &protocol.MatchFailPush{Code: uint32(code)}
 	for _, p := range group.players {
-		if err := s.pushService.PushUser(p.userId, proto.PushMatchFail, push); err != nil {
+		if err := s.pushService.PushUser(p.userId, protocol.PushMatchFail, push); err != nil {
 			btlog.Ins().Warn("pushMatchFailError", "userId", p.userId, "err", err)
 		}
 	}

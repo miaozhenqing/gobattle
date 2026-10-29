@@ -1,4 +1,4 @@
-package db
+package repository
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-type Options struct {
+type DBOptions struct {
 	Host     string
 	Port     int
 	User     string
@@ -26,7 +26,11 @@ type Options struct {
 	ConnMaxIdleTime time.Duration
 }
 
-func Open(ctx context.Context, opts Options) (*sqlx.DB, error) {
+type DB struct {
+	sqlxDB *sqlx.DB
+}
+
+func OpenDB(ctx context.Context, opts DBOptions) (*DB, error) {
 	cfg := mysql.NewConfig()
 	cfg.User = opts.User
 	cfg.Passwd = opts.Password
@@ -37,21 +41,25 @@ func Open(ctx context.Context, opts Options) (*sqlx.DB, error) {
 	cfg.Loc = time.Local
 	cfg.Params = map[string]string{"charset": "utf8mb4"}
 
-	d, err := sqlx.Open("mysql", cfg.FormatDSN())
+	sqlxDB, err := sqlx.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		return nil, fmt.Errorf("open mysql: %w", err)
 	}
-	d.SetMaxOpenConns(opts.MaxOpenConns)
-	d.SetMaxIdleConns(opts.MaxIdleConns)
-	d.SetConnMaxLifetime(opts.ConnMaxLifetime)
-	d.SetConnMaxIdleTime(opts.ConnMaxIdleTime)
+	sqlxDB.SetMaxOpenConns(opts.MaxOpenConns)
+	sqlxDB.SetMaxIdleConns(opts.MaxIdleConns)
+	sqlxDB.SetConnMaxLifetime(opts.ConnMaxLifetime)
+	sqlxDB.SetConnMaxIdleTime(opts.ConnMaxIdleTime)
 
-	if err = d.PingContext(ctx); err != nil {
-		_ = d.Close()
+	if err = sqlxDB.PingContext(ctx); err != nil {
+		_ = sqlxDB.Close()
 		return nil, fmt.Errorf("ping mysql %s: %w", cfg.Addr, err)
 	}
 	btlog.Ins().Info("mysqlConnected", "addr", cfg.Addr, "db", cfg.DBName)
-	return d, nil
+	return &DB{sqlxDB: sqlxDB}, nil
+}
+
+func (d *DB) Close() error {
+	return d.sqlxDB.Close()
 }
 
 const (

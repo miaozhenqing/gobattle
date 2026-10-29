@@ -7,9 +7,8 @@ import (
 	"gobattle/btrouter"
 	"gobattle/btsession"
 	"gobattle/game/config"
-	"gobattle/game/db"
 	"gobattle/game/module"
-	"gobattle/game/proto"
+	"gobattle/game/protocol"
 	"gobattle/game/repository"
 	"gobattle/game/service"
 	"os"
@@ -17,8 +16,6 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-
-	"github.com/jmoiron/sqlx"
 )
 
 // 方便统一关闭
@@ -40,13 +37,12 @@ func (b *serverWrapper) shutdown(ctx context.Context) {
 }
 
 func main() {
-	d := openDB()
+	db := openDB()
 	gameRouterHandler, dsRouterHandler := newRouterHandlers()
 	sessionMgr := btsession.NewManager()
 
 	// service：按依赖顺序构造
-	repoDB := repository.NewDB(d)
-	userService := service.NewUserService(repoDB, config.DBConfig.QueryTimeout)
+	userService := service.NewUserService(db, config.DB.QueryTimeout)
 	pushService := service.NewPushService(gameRouterHandler, dsRouterHandler, sessionMgr)
 	dsService := service.NewDsService()
 	battleService := service.NewBattleService(dsService, pushService)
@@ -90,16 +86,16 @@ func main() {
 	gameServer.shutdown(ctx)
 	dsServer.shutdown(ctx)
 
-	if err := d.Close(); err != nil {
+	if err := db.Close(); err != nil {
 		btlog.Ins().Error("dbCloseError", "err", err)
 	}
 }
 
-func openDB() *sqlx.DB {
-	dbCfg := config.DBConfig
+func openDB() *repository.DB {
+	dbCfg := config.DB
 	openCtx, openCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer openCancel()
-	d, err := db.Open(openCtx, db.Options{
+	db, err := repository.OpenDB(openCtx, repository.DBOptions{
 		Host:            dbCfg.Host,
 		Port:            dbCfg.Port,
 		User:            dbCfg.User,
@@ -113,7 +109,7 @@ func openDB() *sqlx.DB {
 	if err != nil {
 		panic(err)
 	}
-	return d
+	return db
 }
 
 func newRouterHandlers() (*btrouter.RouterHandler, *btrouter.RouterHandler) {
@@ -135,7 +131,7 @@ func newRouterHandlers() (*btrouter.RouterHandler, *btrouter.RouterHandler) {
 }
 
 func newGameServer(gameRouterHandler *btrouter.RouterHandler, sessionMgr *btsession.Manager) *serverWrapper {
-	cfg := config.ServerConfig
+	cfg := config.GameServer
 	boss := btnet.NewEventLoopGroup("game-boss", 1)
 	worker := btnet.NewEventLoopGroup("game-worker", cfg.IOLoopSize)
 	biz := btnet.NewEventLoopGroup("game-biz", cfg.BizLoopSize)
@@ -151,7 +147,7 @@ func newGameServer(gameRouterHandler *btrouter.RouterHandler, sessionMgr *btsess
 }
 
 func newDsServer(dsRouterHandler *btrouter.RouterHandler, dsService *service.DsService) *serverWrapper {
-	cfg := config.DsServerConfig
+	cfg := config.DsServer
 	boss := btnet.NewEventLoopGroup("ds-boss", 1)
 	worker := btnet.NewEventLoopGroup("ds-worker", cfg.IOLoopSize)
 	biz := btnet.NewEventLoopGroup("ds-biz", cfg.BizLoopSize)
@@ -170,10 +166,10 @@ func runClient() {
 	client := dial()
 	defer client.Close()
 	//登录和其他业务
-	loginResp, _ := call[proto.LoginResp](client, proto.MsgLogin, &proto.LoginReq{Username: "test1"})
+	loginResp, _ := call[protocol.LoginResp](client, protocol.MsgLogin, &protocol.LoginReq{Username: "test1"})
 
 	//心跳
-	if config.ServerConfig.IdleTimeout > 0 {
+	if config.GameServer.IdleTimeout > 0 {
 		//需要比IdleTimeout小，否则会触发关闭。写个10测试下
 		go func() {
 			ticker := time.NewTicker(10 * time.Second)
@@ -181,7 +177,7 @@ func runClient() {
 			for {
 				select {
 				case <-ticker.C:
-					call[proto.HeartBeatResp](client, proto.MsgHeartBeat, &proto.HeartBeatReq{UserId: loginResp.UserId})
+					call[protocol.HeartBeatResp](client, protocol.MsgHeartBeat, &protocol.HeartBeatReq{UserId: loginResp.UserId})
 				case <-client.Done():
 					btlog.Ins().Info("clientHeartbeatStop")
 					return
@@ -191,7 +187,7 @@ func runClient() {
 	}
 
 	//模拟匹配
-	_, msErr := call[proto.MatchStartResp](client, proto.MsgMatchStart, &proto.MatchStartReq{GameMode: 1, MapID: 1})
+	_, msErr := call[protocol.MatchStartResp](client, protocol.MsgMatchStart, &protocol.MatchStartReq{GameMode: 1, MapId: 1})
 	if msErr != nil {
 		btlog.Ins().Info("clientMatchStartError", "err", msErr)
 	}
@@ -202,7 +198,7 @@ func runClient() {
 }
 
 func dial() *btrouter.Client {
-	return dialWithPush(config.ServerConfig.Options, onPush)
+	return dialWithPush(config.GameServer.Options, onPush)
 }
 
 func dialWithPush(cfg btnet.Options, onPush func(msgId uint32, data []byte)) *btrouter.Client {

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"gobattle/btlog"
-	"gobattle/game/db"
 	"gobattle/game/model"
 	"gobattle/game/repository"
 	"time"
@@ -20,7 +19,7 @@ func NewUserService(db *repository.DB, queryTimeout time.Duration) *UserService 
 }
 
 type LoginResult struct {
-	User    *model.UserModel
+	User    *model.User
 	Created bool
 }
 
@@ -28,7 +27,7 @@ func (s *UserService) Login(ctx context.Context, username string) (*LoginResult,
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
 	res, err := s.login(ctx, username)
-	if db.IsDupEntry(err) || db.IsDeadlock(err) {
+	if repository.IsDupEntry(err) || repository.IsDeadlock(err) {
 		btlog.Ins().Warn("loginConflictRetry", "username", username, "err", err)
 		res, err = s.login(ctx, username)
 	}
@@ -39,18 +38,18 @@ func (s *UserService) Login(ctx context.Context, username string) (*LoginResult,
 }
 
 func (s *UserService) login(ctx context.Context, username string) (*LoginResult, error) {
-	return repository.Tx(ctx, s.db, func(tx *repository.Store) (*LoginResult, error) {
+	return repository.Tx(ctx, s.db, func(store *repository.TxStore) (*LoginResult, error) {
 		now := time.Now().UnixMilli()
-		user, err := tx.User.GetByUsernameForUpdate(ctx, username)
+		user, err := store.User.GetByUsernameForUpdate(ctx, username)
 		if err != nil {
 			return nil, err
 		}
 		if user == nil {
-			user = &model.UserModel{Username: username, RoleName: username, CreateTime: now, LastLoginTime: now}
-			return &LoginResult{User: user, Created: true}, tx.User.Insert(ctx, user)
+			user = &model.User{Username: username, RoleName: username, CreateTime: now, LastLoginTime: now}
+			return &LoginResult{User: user, Created: true}, store.User.Insert(ctx, user)
 		}
 		user.LastLoginTime = now
-		err = tx.User.UpdateLastLoginTime(ctx, user.UserId, now)
+		err = store.User.UpdateLastLoginTime(ctx, user.UserId, now)
 		return &LoginResult{User: user}, err
 	})
 }

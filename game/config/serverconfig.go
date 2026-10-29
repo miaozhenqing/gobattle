@@ -3,12 +3,16 @@ package config
 import (
 	"gobattle/btnet"
 	"runtime"
+	"time"
 )
 
 // todo 后续从配置文件读取
-var ServerConfig *serverConfig
+var (
+	GameServer *ServerConfig
+	DsServer   *ServerConfig
+)
 
-type serverConfig struct {
+type ServerConfig struct {
 	btnet.Options
 
 	//io loop 数量
@@ -18,10 +22,20 @@ type serverConfig struct {
 }
 
 func init() {
-	opts := btnet.DefaultOptions()
-	ServerConfig = &serverConfig{
-		Options:     opts,
+	GameServer = &ServerConfig{
+		Options:     btnet.DefaultOptions(),
 		IOLoopSize:  runtime.NumCPU(),
 		BizLoopSize: 10,
+	}
+
+	dsOpts := btnet.DefaultOptions()
+	dsOpts.Name = "gobattle-ds"
+	dsOpts.TcpPort = 9529
+	dsOpts.MaxConn = 1000
+	dsOpts.WriteTimeout = time.Second
+	DsServer = &ServerConfig{
+		Options:     dsOpts,
+		IOLoopSize:  2,
+		BizLoopSize: 2,
 	}
 }

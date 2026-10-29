@@ -10,8 +10,8 @@ const (
 	DsStateBusy int32 = 1
 )
 
-type DsModel struct {
-	ID           int64
+type Ds struct {
+	Id           int64
 	IP           string
 	Port         int
 	RegisterTime int64

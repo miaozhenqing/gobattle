@@ -3,9 +3,9 @@ package config
 import "time"
 
 // todo 后续从配置文件读取
-var DBConfig *dbConfig
+var DB *DBConfig
 
-type dbConfig struct {
+type DBConfig struct {
 	Host     string
 	Port     int
 	User     string
@@ -22,7 +22,7 @@ type dbConfig struct {
 }
 
 func init() {
-	DBConfig = &dbConfig{
+	DB = &DBConfig{
 		Host:     "127.0.0.1",
 		Port:     3306,
 		User:     "root",

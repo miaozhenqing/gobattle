@@ -16,12 +16,12 @@ func NewSessionHandler(mgr *Manager) *SessionHandler {
 }
 
 func (h *SessionHandler) OnActive(ctx *btnet.HandlerContext) {
-	btlog.Ins().Info("connActive", "connId", ctx.GetConnection().GetID())
+	btlog.Ins().Info("connActive", "connId", ctx.GetConnection().GetId())
 	ctx.FireActive()
 }
 
 func (h *SessionHandler) OnInactive(ctx *btnet.HandlerContext) {
-	btlog.Ins().Info("connInactive", "connId", ctx.GetConnection().GetID())
+	btlog.Ins().Info("connInactive", "connId", ctx.GetConnection().GetId())
 	h.mgr.unbind(ctx.GetConnection())
 	ctx.FireInactive()
 }

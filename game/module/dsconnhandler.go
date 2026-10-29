@@ -17,13 +17,13 @@ func NewDsConnHandler(dsService *service.DsService) *DsConnHandler {
 }
 
 func (h *DsConnHandler) OnActive(ctx *btnet.HandlerContext) {
-	btlog.Ins().Info("dsConnActive", "connId", ctx.GetConnection().GetID())
+	btlog.Ins().Info("dsConnActive", "connId", ctx.GetConnection().GetId())
 	ctx.FireActive()
 }
 
 func (h *DsConnHandler) OnInactive(ctx *btnet.HandlerContext) {
 	conn := ctx.GetConnection()
-	btlog.Ins().Info("dsConnInactive", "connId", conn.GetID())
+	btlog.Ins().Info("dsConnInactive", "connId", conn.GetId())
 	h.dsService.Unregister(conn)
 	ctx.FireInactive()
 }

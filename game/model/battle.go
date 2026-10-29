@@ -11,11 +11,11 @@ type BattlePlayer struct {
 	Team       int
 }
 
-type BattleModel struct {
-	ID         int64
+type Battle struct {
+	Id         int64
 	GameMode   int
-	MapID      int
-	Ds         *DsModel
+	MapId      int
+	Ds         *Ds
 	Players    []*BattlePlayer
 	State      int
 	CreateTime int64

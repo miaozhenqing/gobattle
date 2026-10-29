@@ -26,7 +26,7 @@ func (cm *ConnManager) Add(conn *Connection) bool {
 		return false
 	}
 	cm.wg.Add(1)
-	cm.connections[conn.GetID()] = conn
+	cm.connections[conn.GetId()] = conn
 	return true
 }
 

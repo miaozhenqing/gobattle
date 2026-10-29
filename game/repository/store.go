@@ -2,27 +2,19 @@ package repository
 
 import "github.com/jmoiron/sqlx"
 
-type DB struct {
-	db *sqlx.DB
-}
-
-func NewDB(d *sqlx.DB) *DB {
-	return &DB{db: d}
-}
-
-type Store struct {
+type TxStore struct {
 	User *UserRepository
 }
 
-func newStore(tx *sqlx.Tx) *Store {
-	return &Store{
+func newTxStore(tx *sqlx.Tx) *TxStore {
+	return &TxStore{
 		User: &UserRepository{tx: tx},
 	}
 }
 
-type Conn interface {
-	conn()
+type TxSource interface {
+	txSource()
 }
 
-func (*DB) conn()    {}
-func (*Store) conn() {}
+func (*DB) txSource()      {}
+func (*TxStore) txSource() {}

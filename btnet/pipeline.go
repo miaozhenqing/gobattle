@@ -41,7 +41,7 @@ func newPipeline(conn *Connection, ioLoop *EventLoop) *Pipeline {
 }
 
 func (p *Pipeline) AddLastGroup(g *EventLoopGroup, h any) *Pipeline {
-	return p.addLast(g.Next(p.conn.GetID()), h)
+	return p.addLast(g.Next(p.conn.GetId()), h)
 }
 
 func (p *Pipeline) AddLast(h any) *Pipeline {

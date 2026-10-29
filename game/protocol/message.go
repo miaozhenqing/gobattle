@@ -1,4 +1,4 @@
-package proto
+package protocol
 
 const (
 	// ==================== 登录 ====================
@@ -53,19 +53,19 @@ type HeartBeatResp struct {
 
 // ==============ds
 type DsRegisterReq struct {
-	DsID int64  `json:"dsId"`
+	DsId int64  `json:"dsId"`
 	IP   string `json:"ip"`
 	Port int    `json:"port"`
 }
 
 type DsRegisterResp struct {
-	DsID int64 `json:"dsId"`
+	DsId int64 `json:"dsId"`
 }
 
 type DsHeartBeatReq struct{}
 
 type DsHeartBeatResp struct {
-	DsID int64 `json:"dsId"`
+	DsId int64 `json:"dsId"`
 }
 
 // ==============battle
@@ -73,7 +73,7 @@ type DsHeartBeatResp struct {
 type DsBattleAssignPush struct {
 	BattleId int64              `json:"battleId"`
 	GameMode int                `json:"gameMode"`
-	MapID    int                `json:"mapId"`
+	MapId    int                `json:"mapId"`
 	Players  []*MatchPlayerInfo `json:"players"`
 }
 
@@ -102,7 +102,7 @@ type BattleQueryReq struct{}
 type BattleQueryResp struct {
 	BattleId int64  `json:"battleId"`
 	GameMode int    `json:"gameMode"`
-	MapID    int    `json:"mapId"`
+	MapId    int    `json:"mapId"`
 	DsIP     string `json:"dsIp"`
 	DsPort   int    `json:"dsPort"`
 	State    int    `json:"state"`
@@ -116,12 +116,12 @@ type BattleEndPush struct {
 // ==============match
 type MatchStartReq struct {
 	GameMode int `json:"gameMode"`
-	MapID    int `json:"mapId"`
+	MapId    int `json:"mapId"`
 }
 
 type MatchStartResp struct {
 	GameMode int `json:"gameMode"`
-	MapID    int `json:"mapId"`
+	MapId    int `json:"mapId"`
 }
 
 type MatchCancelReq struct{}
@@ -137,7 +137,7 @@ type MatchPlayerInfo struct {
 type MatchSuccessPush struct {
 	BattleId int64              `json:"battleId"`
 	GameMode int                `json:"gameMode"`
-	MapID    int                `json:"mapId"`
+	MapId    int                `json:"mapId"`
 	DsIP     string             `json:"dsIp"`
 	DsPort   int                `json:"dsPort"`
 	Players  []*MatchPlayerInfo `json:"players"`

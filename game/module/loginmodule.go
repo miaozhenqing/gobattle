@@ -4,7 +4,7 @@ import (
 	"gobattle/btlog"
 	"gobattle/btrouter"
 	"gobattle/btsession"
-	"gobattle/game/proto"
+	"gobattle/game/protocol"
 	"gobattle/game/service"
 	"unicode/utf8"
 )
@@ -20,16 +20,16 @@ func NewLoginModule(userService *service.UserService, pushService *service.PushS
 }
 
 func (m *LoginModule) RegisterRoutes(r *btrouter.RouterHandler) {
-	btrouter.HandlePublic(r, proto.MsgLogin, m.Login)
-	btrouter.Handle(r, proto.MsgHeartBeat, m.HeartBeat)
+	btrouter.HandlePublic(r, protocol.MsgLogin, m.Login)
+	btrouter.Handle(r, protocol.MsgHeartBeat, m.HeartBeat)
 }
 
-func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (*proto.LoginResp, error) {
+func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *protocol.LoginReq) (*protocol.LoginResp, error) {
 	if !validUsername(req.Username) {
-		return nil, proto.CodeInvalidUsername
+		return nil, protocol.CodeInvalidUsername
 	}
 	if _, ok := btsession.GetSession(ctx.Conn()); ok {
-		return nil, proto.CodeAlreadyLogin
+		return nil, protocol.CodeAlreadyLogin
 	}
 
 	res, err := m.userService.Login(ctx, req.Username)
@@ -40,26 +40,26 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (
 
 	old, err := m.sessionMgr.Bind(ctx.Conn(), user.UserId)
 	if err != nil {
-		return nil, proto.CodeAlreadyLogin
+		return nil, protocol.CodeAlreadyLogin
 	}
 	if old != nil {
 		m.kick(old)
 	}
-	btlog.Ins().Info("login", "userId", user.UserId, "username", user.Username, "created", res.Created, "connId", ctx.Conn().GetID())
-	return &proto.LoginResp{UserId: user.UserId, Username: user.Username, RoleName: user.RoleName, IsNew: res.Created}, nil
+	btlog.Ins().Info("login", "userId", user.UserId, "username", user.Username, "created", res.Created, "connId", ctx.Conn().GetId())
+	return &protocol.LoginResp{UserId: user.UserId, Username: user.Username, RoleName: user.RoleName, IsNew: res.Created}, nil
 }
 
 func (m *LoginModule) kick(old *btsession.Session) {
-	btlog.Ins().Info("kick", "userId", old.UserId(), "connId", old.Conn().GetID())
-	_ = m.pushService.PushSession(old, proto.PushKick, &proto.KickPush{})
+	btlog.Ins().Info("kick", "userId", old.UserId(), "connId", old.Conn().GetId())
+	_ = m.pushService.PushSession(old, protocol.PushKick, &protocol.KickPush{})
 	old.Conn().FlushAndStop()
 }
 
-func (m *LoginModule) HeartBeat(requestContext *btrouter.RequestContext, req *proto.HeartBeatReq) (*proto.HeartBeatResp, error) {
+func (m *LoginModule) HeartBeat(requestContext *btrouter.RequestContext, req *protocol.HeartBeatReq) (*protocol.HeartBeatResp, error) {
 	if !btsession.IsLoggedIn(requestContext) {
-		return nil, proto.CodeNotLogin
+		return nil, protocol.CodeNotLogin
 	}
-	return &proto.HeartBeatResp{UserId: req.UserId}, nil
+	return &protocol.HeartBeatResp{UserId: req.UserId}, nil
 }
 
 func validUsername(s string) bool {

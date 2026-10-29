@@ -132,13 +132,13 @@ func (r *RouterHandler) OnRead(ctx *btnet.HandlerContext, msg any) {
 func (r *RouterHandler) dispatch(conn *btnet.Connection, env *Envelope) {
 	r.freeze()
 	if env.Type != MsgTypeRequest {
-		btlog.Ins().Warn("unexpectedMsgType", "connId", conn.GetID(), "type", env.Type, "msgId", env.MsgId)
+		btlog.Ins().Warn("unexpectedMsgType", "connId", conn.GetId(), "type", env.Type, "msgId", env.MsgId)
 		return
 	}
 
 	rt := r.routes[env.MsgId]
 	if rt == nil {
-		btlog.Ins().Warn("noRoute", "connId", conn.GetID(), "msgId", env.MsgId)
+		btlog.Ins().Warn("noRoute", "connId", conn.GetId(), "msgId", env.MsgId)
 		r.reply(conn, env, nil, CodeUnimplemented)
 		return
 	}
@@ -162,7 +162,7 @@ func (r *RouterHandler) invoke(ctx *RequestContext, rt *route, payload []byte) (
 	}
 	if err == nil {
 		resp, err = r.safeCall(ctx, rt, req)
-		btlog.Ins().Debug("invoke", "connId", ctx.conn.GetID(), "msgId", ctx.msgId, "method", rt.method)
+		btlog.Ins().Debug("invoke", "connId", ctx.conn.GetId(), "msgId", ctx.msgId, "method", rt.method)
 	}
 	for i := n - 1; i >= 0; i-- {
 		r.safeAfter(ctx, rt, r.interceptors[i], req, resp, err)
@@ -173,7 +173,7 @@ func (r *RouterHandler) invoke(ctx *RequestContext, rt *route, payload []byte) (
 func (r *RouterHandler) safeDecode(ctx *RequestContext, rt *route, payload []byte) (req any, err error) {
 	defer r.recoverPanic(ctx, rt, "decode", nil, &err)
 	if req, err = rt.decode(payload); err != nil {
-		btlog.Ins().Warn("decodeError", "connId", ctx.conn.GetID(), "msgId", ctx.msgId, "method", rt.method, "err", err)
+		btlog.Ins().Warn("decodeError", "connId", ctx.conn.GetId(), "msgId", ctx.msgId, "method", rt.method, "err", err)
 		return nil, CodeInvalidArgument
 	}
 	return req, nil
@@ -200,7 +200,7 @@ func (r *RouterHandler) recoverPanic(ctx *RequestContext, rt *route, stage strin
 		if it != nil {
 			stage = fmt.Sprintf("%s(%T)", stage, it)
 		}
-		btlog.Ins().Error("handlerPanic", "stage", stage, "connId", ctx.conn.GetID(), "msgId", ctx.msgId,
+		btlog.Ins().Error("handlerPanic", "stage", stage, "connId", ctx.conn.GetId(), "msgId", ctx.msgId,
 			"method", rt.method, "panic", p, "stack", string(debug.Stack()))
 		*err = CodeInternal
 	}
@@ -216,7 +216,7 @@ func (r *RouterHandler) reply(conn *btnet.Connection, req *Envelope, resp any, e
 	if code == CodeOK && resp != nil {
 		b, mErr := r.codec.Marshal(resp)
 		if mErr != nil {
-			btlog.Ins().Error("marshalRespError", "connId", conn.GetID(), "msgId", req.MsgId, "err", mErr)
+			btlog.Ins().Error("marshalRespError", "connId", conn.GetId(), "msgId", req.MsgId, "err", mErr)
 			out.Code = uint32(CodeInternal)
 		} else {
 			out.Payload = b
@@ -233,11 +233,11 @@ func (r *RouterHandler) toCode(conn *btnet.Connection, env *Envelope, err error)
 	if errors.As(err, &code) {
 		// 包装过的 Code 带有上下文（如底层 DB 错误），日志打完整链，客户端只拿到 code
 		if err != error(code) {
-			btlog.Ins().Warn("codeError", "connId", conn.GetID(), "msgId", env.MsgId, "code", uint32(code), "err", err)
+			btlog.Ins().Warn("codeError", "connId", conn.GetId(), "msgId", env.MsgId, "code", uint32(code), "err", err)
 		}
 		return code
 	}
-	btlog.Ins().Error("nonCodeError", "connId", conn.GetID(), "msgId", env.MsgId, "err", err)
+	btlog.Ins().Error("nonCodeError", "connId", conn.GetId(), "msgId", env.MsgId, "err", err)
 	return CodeInternal
 }
 

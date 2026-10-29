@@ -2,7 +2,7 @@ package module
 
 import (
 	"gobattle/btrouter"
-	"gobattle/game/proto"
+	"gobattle/game/protocol"
 	"gobattle/game/service"
 	"net"
 )
@@ -16,8 +16,8 @@ func NewDsModule(dsService *service.DsService) *DsModule {
 }
 
 func (m *DsModule) RegisterRoutes(r *btrouter.RouterHandler) {
-	btrouter.HandlePublic(r, proto.MsgDsRegister, m.Register)
-	btrouter.Handle(r, proto.MsgDsHeartBeat, m.HeartBeat)
+	btrouter.HandlePublic(r, protocol.MsgDsRegister, m.Register)
+	btrouter.Handle(r, protocol.MsgDsHeartBeat, m.HeartBeat)
 }
 
 func IsDsRegistered(ctx *btrouter.RequestContext) bool {
@@ -25,21 +25,21 @@ func IsDsRegistered(ctx *btrouter.RequestContext) bool {
 	return ok
 }
 
-func (m *DsModule) Register(ctx *btrouter.RequestContext, req *proto.DsRegisterReq) (*proto.DsRegisterResp, error) {
-	if net.ParseIP(req.IP) == nil || req.Port <= 0 || req.DsID <= 0 {
-		return nil, proto.CodeDsInvalidParam
+func (m *DsModule) Register(ctx *btrouter.RequestContext, req *protocol.DsRegisterReq) (*protocol.DsRegisterResp, error) {
+	if net.ParseIP(req.IP) == nil || req.Port <= 0 || req.DsId <= 0 {
+		return nil, protocol.CodeDsInvalidParam
 	}
-	ds, err := m.dsService.Register(ctx.Conn(), req.DsID, req.IP, req.Port)
+	ds, err := m.dsService.Register(ctx.Conn(), req.DsId, req.IP, req.Port)
 	if err != nil {
 		return nil, err
 	}
-	return &proto.DsRegisterResp{DsID: ds.ID}, nil
+	return &protocol.DsRegisterResp{DsId: ds.Id}, nil
 }
 
-func (m *DsModule) HeartBeat(ctx *btrouter.RequestContext, _ *proto.DsHeartBeatReq) (*proto.DsHeartBeatResp, error) {
+func (m *DsModule) HeartBeat(ctx *btrouter.RequestContext, _ *protocol.DsHeartBeatReq) (*protocol.DsHeartBeatResp, error) {
 	ds, ok := service.GetDs(ctx.Conn())
 	if !ok {
-		return nil, proto.CodeDsNotRegistered
+		return nil, protocol.CodeDsNotRegistered
 	}
-	return &proto.DsHeartBeatResp{DsID: ds.ID}, nil
+	return &protocol.DsHeartBeatResp{DsId: ds.Id}, nil
 }

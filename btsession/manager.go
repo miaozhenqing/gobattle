@@ -31,7 +31,7 @@ func (m *Manager) Bind(conn *btnet.Connection, userId int64) (*Session, error) {
 	m.sessions[userId] = s
 	m.mu.Unlock()
 
-	btlog.Ins().Info("sessionBind", "userId", userId, "connId", conn.GetID())
+	btlog.Ins().Info("sessionBind", "userId", userId, "connId", conn.GetId())
 	return old, nil
 }
 
@@ -53,7 +53,7 @@ func (m *Manager) unbind(conn *btnet.Connection) {
 		delete(m.sessions, s.userId)
 	}
 	m.mu.Unlock()
-	btlog.Ins().Info("sessionUnbind", "userId", s.userId, "connId", conn.GetID())
+	btlog.Ins().Info("sessionUnbind", "userId", s.userId, "connId", conn.GetId())
 
 	for _, fn := range m.unbindListeners {
 		fn(s)

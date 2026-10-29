@@ -1,6 +1,6 @@
 package model
 
-type UserModel struct {
+type User struct {
 	UserId        int64  `db:"uid"`
 	Username      string `db:"username"`
 	RoleName      string `db:"roleName"`

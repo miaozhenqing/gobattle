@@ -36,6 +36,6 @@ func (s *PushService) PushSession(session *btsession.Session, msgId uint32, v an
 	return s.gameRouterHandler.Push(session.Conn(), msgId, v)
 }
 
-func (s *PushService) PushDs(ds *model.DsModel, msgId uint32, v any) error {
+func (s *PushService) PushDs(ds *model.Ds, msgId uint32, v any) error {
 	return s.dsRouterHandler.Push(ds.Conn, msgId, v)
 }
