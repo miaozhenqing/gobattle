@@ -1,9 +1,11 @@
 package service
 
+import "gobattle/game/repository"
+
 type ItemService struct {
-	deps *Deps
+	db *repository.DB
 }
 
-func NewItemService(d *Deps) *ItemService {
-	return &ItemService{deps: d}
+func NewItemService(db *repository.DB) *ItemService {
+	return &ItemService{db: db}
 }

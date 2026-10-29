@@ -1,20 +1,22 @@
 package module
 
 import (
-	"context"
 	"gobattle/btlog"
 	"gobattle/btrouter"
 	"gobattle/btsession"
 	"gobattle/game/proto"
+	"gobattle/game/service"
 	"unicode/utf8"
 )
 
 type LoginModule struct {
-	deps *Deps
+	userService *service.UserService
+	pushService *service.PushService
+	sessionMgr  *btsession.Manager
 }
 
-func NewLoginModule(d *Deps) *LoginModule {
-	return &LoginModule{deps: d}
+func NewLoginModule(userService *service.UserService, pushService *service.PushService, sessionMgr *btsession.Manager) *LoginModule {
+	return &LoginModule{userService: userService, pushService: pushService, sessionMgr: sessionMgr}
 }
 
 func (m *LoginModule) RegisterRoutes(r *btrouter.RouterHandler) {
@@ -30,15 +32,13 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (
 		return nil, proto.CodeAlreadyLogin
 	}
 
-	dbCtx, cancel := context.WithTimeout(ctx, m.deps.QueryTimeout)
-	defer cancel()
-	res, err := m.deps.UserService.Login(dbCtx, req.Username)
+	res, err := m.userService.Login(ctx, req.Username)
 	if err != nil {
 		return nil, err
 	}
 	user := res.User
 
-	old, err := m.deps.SessionMgr.Bind(ctx.Conn(), user.UserId)
+	old, err := m.sessionMgr.Bind(ctx.Conn(), user.UserId)
 	if err != nil {
 		return nil, proto.CodeAlreadyLogin
 	}
@@ -51,7 +51,7 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *proto.LoginReq) (
 
 func (m *LoginModule) kick(old *btsession.Session) {
 	btlog.Ins().Info("kick", "userId", old.UserId(), "connId", old.Conn().GetID())
-	_ = m.deps.GameRouterHandler.Push(old.Conn(), proto.PushKick, &proto.KickPush{})
+	_ = m.pushService.PushSession(old, proto.PushKick, &proto.KickPush{})
 	old.Conn().FlushAndStop()
 }
 

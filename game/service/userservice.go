@@ -10,11 +10,13 @@ import (
 )
 
 type UserService struct {
-	deps *Deps
+	db *repository.DB
+	// 单次业务请求内 DB 操作的总超时
+	queryTimeout time.Duration
 }
 
-func NewUserService(d *Deps) *UserService {
-	return &UserService{deps: d}
+func NewUserService(db *repository.DB, queryTimeout time.Duration) *UserService {
+	return &UserService{db: db, queryTimeout: queryTimeout}
 }
 
 type LoginResult struct {
@@ -23,6 +25,8 @@ type LoginResult struct {
 }
 
 func (s *UserService) Login(ctx context.Context, username string) (*LoginResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
+	defer cancel()
 	res, err := s.login(ctx, username)
 	if db.IsDupEntry(err) || db.IsDeadlock(err) {
 		btlog.Ins().Warn("loginConflictRetry", "username", username, "err", err)
@@ -35,7 +39,7 @@ func (s *UserService) Login(ctx context.Context, username string) (*LoginResult,
 }
 
 func (s *UserService) login(ctx context.Context, username string) (*LoginResult, error) {
-	return repository.Tx(ctx, s.deps.DB, func(tx *repository.Store) (*LoginResult, error) {
+	return repository.Tx(ctx, s.db, func(tx *repository.Store) (*LoginResult, error) {
 		now := time.Now().UnixMilli()
 		user, err := tx.User.GetByUsernameForUpdate(ctx, username)
 		if err != nil {

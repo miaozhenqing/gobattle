@@ -41,17 +41,27 @@ func (b *serverWrapper) shutdown(ctx context.Context) {
 
 func main() {
 	d := openDB()
-	deps := newModuleDeps(d)
+	gameRouterHandler, dsRouterHandler := newRouterHandlers()
+	sessionMgr := btsession.NewManager()
 
-	dsModule := module.NewDsModule(deps)
-	loginModule := module.NewLoginModule(deps)
-	battleModule := module.NewBattleModule(deps, dsModule)
-	deps.GameRouterHandler.RegisterModules(loginModule, battleModule)
-	deps.DsRouterHandler.RegisterModules(dsModule)
-	battleModule.RegisterDsRoutes(deps.DsRouterHandler)
+	// service：按依赖顺序构造
+	repoDB := repository.NewDB(d)
+	userService := service.NewUserService(repoDB, config.DBConfig.QueryTimeout)
+	pushService := service.NewPushService(gameRouterHandler, dsRouterHandler, sessionMgr)
+	dsService := service.NewDsService()
+	battleService := service.NewBattleService(dsService, pushService)
+	matchService := service.NewMatchService(battleService, pushService, sessionMgr)
 
-	gameServer := newGameServer(deps)
-	dsServer := newDsServer(deps, dsModule)
+	// module
+	loginModule := module.NewLoginModule(userService, pushService, sessionMgr)
+	battleModule := module.NewBattleModule(matchService, battleService)
+	dsModule := module.NewDsModule(dsService)
+	gameRouterHandler.RegisterModules(loginModule, battleModule)
+	dsRouterHandler.RegisterModules(dsModule)
+	battleModule.RegisterDsRoutes(dsRouterHandler)
+
+	gameServer := newGameServer(gameRouterHandler, sessionMgr)
+	dsServer := newDsServer(dsRouterHandler, dsService)
 
 	if err := dsServer.server.Start(); err != nil {
 		panic("ds server start error")
@@ -60,8 +70,8 @@ func main() {
 		panic("game server start error")
 	}
 
-	//开始匹配
-	battleModule.RunMatch()
+	battleService.Run()
+	matchService.Run()
 
 	//测试代码
 	go runClient()
@@ -70,7 +80,9 @@ func main() {
 	defer stop()
 	<-sigCtx.Done()
 
-	battleModule.Stop()
+	// 先停匹配，不再产生新战斗
+	matchService.Stop()
+	battleService.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -104,11 +116,7 @@ func openDB() *sqlx.DB {
 	return d
 }
 
-func newModuleDeps(d *sqlx.DB) *module.Deps {
-	serviceDeps := &service.Deps{DB: repository.NewDB(d)}
-	serviceDeps.UserService = service.NewUserService(serviceDeps)
-	serviceDeps.ItemService = service.NewItemService(serviceDeps)
-
+func newRouterHandlers() (*btrouter.RouterHandler, *btrouter.RouterHandler) {
 	gameRouter := btrouter.NewRouterHandler(btrouter.JSONCodec{})
 	gameRouter.AddInterceptor(
 		btrouter.RateLimit(20, 40),
@@ -123,44 +131,37 @@ func newModuleDeps(d *sqlx.DB) *module.Deps {
 		btrouter.SlowLog(50 * time.Millisecond),
 	)
 
-	return &module.Deps{
-		GameRouterHandler: gameRouter,
-		DsRouterHandler:   dsRouter,
-		SessionMgr:        btsession.NewManager(),
-		QueryTimeout:      config.DBConfig.QueryTimeout,
-		UserService:       serviceDeps.UserService,
-		ItemService:       serviceDeps.ItemService,
-	}
+	return gameRouter, dsRouter
 }
 
-func newGameServer(deps *module.Deps) *serverWrapper {
+func newGameServer(gameRouterHandler *btrouter.RouterHandler, sessionMgr *btsession.Manager) *serverWrapper {
 	cfg := config.ServerConfig
 	boss := btnet.NewEventLoopGroup("game-boss", 1)
 	worker := btnet.NewEventLoopGroup("game-worker", cfg.IOLoopSize)
 	biz := btnet.NewEventLoopGroup("game-biz", cfg.BizLoopSize)
 
 	s := btnet.NewServer(cfg.Options, boss, worker)
-	sessionHandler := btsession.NewSessionHandler(deps.SessionMgr)
+	sessionHandler := btsession.NewSessionHandler(sessionMgr)
 	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
 		p.AddLastGroup(biz, sessionHandler)
-		p.AddLastGroup(biz, deps.GameRouterHandler)
+		p.AddLastGroup(biz, gameRouterHandler)
 	})
 	return &serverWrapper{name: "game", server: s, groups: []*btnet.EventLoopGroup{boss, worker, biz}}
 }
 
-func newDsServer(deps *module.Deps, dsModule *module.DsModule) *serverWrapper {
+func newDsServer(dsRouterHandler *btrouter.RouterHandler, dsService *service.DsService) *serverWrapper {
 	cfg := config.DsServerConfig
 	boss := btnet.NewEventLoopGroup("ds-boss", 1)
 	worker := btnet.NewEventLoopGroup("ds-worker", cfg.IOLoopSize)
 	biz := btnet.NewEventLoopGroup("ds-biz", cfg.BizLoopSize)
 
 	s := btnet.NewServer(cfg.Options, boss, worker)
-	sessionHandler := module.NewDsSessionHandler(dsModule)
+	connHandler := module.NewDsConnHandler(dsService)
 	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
-		p.AddLastGroup(biz, sessionHandler)
-		p.AddLastGroup(biz, deps.DsRouterHandler)
+		p.AddLastGroup(biz, connHandler)
+		p.AddLastGroup(biz, dsRouterHandler)
 	})
 	return &serverWrapper{name: "ds", server: s, groups: []*btnet.EventLoopGroup{boss, worker, biz}}
 }
