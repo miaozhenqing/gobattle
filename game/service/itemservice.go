@@ -9,6 +9,7 @@ import (
 	"gobattle/game/protocol"
 	"gobattle/game/repository"
 	"gobattle/game/service/item"
+	"gobattle/game/tpl"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -20,9 +21,10 @@ type ItemService struct {
 	pushService  *PushService
 	idNode       *snowflake.Node
 	queryTimeout time.Duration
+	tplMgr       *tpl.TplManager
 }
 
-func NewItemService(db *repository.DB, pushService *PushService, idNode *snowflake.Node, queryTimeout time.Duration) *ItemService {
+func NewItemService(db *repository.DB, pushService *PushService, idNode *snowflake.Node, queryTimeout time.Duration, tplMgr *tpl.TplManager) *ItemService {
 
 	for _, def := range model.ItemCategoryDefs() {
 		_, hasStack := item.GetStackHandler(def.Category)
@@ -31,7 +33,7 @@ func NewItemService(db *repository.DB, pushService *PushService, idNode *snowfla
 			panic(fmt.Sprintf("item category %d handler not match stackable:%v", def.Category, def.Stackable))
 		}
 	}
-	return &ItemService{db: db, pushService: pushService, idNode: idNode, queryTimeout: queryTimeout}
+	return &ItemService{db: db, pushService: pushService, idNode: idNode, queryTimeout: queryTimeout, tplMgr: tplMgr}
 }
 
 // 仓库道具列表
@@ -72,7 +74,7 @@ func (s *ItemService) Decr(ctx context.Context, userId int64, costs []model.Item
 
 // 先扣后加,任一道具不足则全部不生效
 func (s *ItemService) updateItem(ctx context.Context, userId int64, costs []model.ItemChangeReq, adds []model.ItemChangeReq, reason int) (*model.ItemChangeResult, error) {
-	ops, err := mergeItemOps(costs, adds)
+	ops, err := s.mergeItemOps(costs, adds)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +198,7 @@ func (o *itemOps) stackDelta(key model.ItemKey) *item.StackDelta {
 	return delta
 }
 
-func mergeItemOps(costs, adds []model.ItemChangeReq) (*itemOps, error) {
+func (s *ItemService) mergeItemOps(costs, adds []model.ItemChangeReq) (*itemOps, error) {
 	ops := &itemOps{
 		stackDeltas:  make(map[model.ItemCategory]map[int]*item.StackDelta),
 		unstackCosts: make(map[model.ItemCategory]map[int64]int),
@@ -204,7 +206,7 @@ func mergeItemOps(costs, adds []model.ItemChangeReq) (*itemOps, error) {
 	}
 	seenIds := make(map[int64]struct{}, len(costs))
 	for _, c := range costs {
-		def, ok := model.GetItemCategoryDef(c.Category)
+		def, ok := s.getItemCategoryDef(c.ItemKey)
 		if !ok || c.Count <= 0 {
 			return nil, protocol.CodeItemInvalidParam
 		}
@@ -230,7 +232,7 @@ func mergeItemOps(costs, adds []model.ItemChangeReq) (*itemOps, error) {
 		itemIdById[c.Id] = c.ItemId
 	}
 	for _, c := range adds {
-		def, ok := model.GetItemCategoryDef(c.Category)
+		def, ok := s.getItemCategoryDef(c.ItemKey)
 		if !ok || c.Count <= 0 || c.Id != 0 {
 			return nil, protocol.CodeItemInvalidParam
 		}
@@ -246,4 +248,12 @@ func mergeItemOps(costs, adds []model.ItemChangeReq) (*itemOps, error) {
 		countByItemId[c.ItemId] += c.Count
 	}
 	return ops, nil
+}
+
+func (s *ItemService) getItemCategoryDef(key model.ItemKey) (*model.ItemCategoryDef, bool) {
+	itemTpl, ok := s.tplMgr.GetItemTpl(key.ItemId)
+	if !ok || itemTpl.Category != key.Category {
+		return nil, false
+	}
+	return model.GetItemCategoryDef(key.Category)
 }

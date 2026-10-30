@@ -11,6 +11,7 @@ import (
 	"gobattle/game/protocol"
 	"gobattle/game/repository"
 	"gobattle/game/service"
+	"gobattle/game/tpl"
 	"os"
 	"os/signal"
 	"strconv"
@@ -39,6 +40,10 @@ func (b *serverWrapper) shutdown(ctx context.Context) {
 }
 
 func main() {
+	tplMgr, err := tpl.Load("game/tpl/json")
+	if err != nil {
+		panic(err)
+	}
 	db := openDB()
 	gameRouterHandler, dsRouterHandler := newRouterHandlers()
 	sessionMgr := btsession.NewManager()
@@ -47,13 +52,13 @@ func main() {
 		panic(err)
 	}
 
-	// service：按依赖顺序构造
+	// service：按依赖顺序构造 todo 后续看是否优化为注入形式
 	userService := service.NewUserService(db, idNode, config.DB.QueryTimeout)
 	pushService := service.NewPushService(gameRouterHandler, dsRouterHandler, sessionMgr)
-	itemService := service.NewItemService(db, pushService, idNode, config.DB.QueryTimeout)
+	itemService := service.NewItemService(db, pushService, idNode, config.DB.QueryTimeout, tplMgr)
 	dsService := service.NewDsService()
 	battleService := service.NewBattleService(dsService, pushService)
-	matchService := service.NewMatchService(battleService, pushService, sessionMgr)
+	matchService := service.NewMatchService(battleService, pushService, sessionMgr, tplMgr)
 
 	// module
 	loginModule := module.NewLoginModule(userService, pushService, sessionMgr)

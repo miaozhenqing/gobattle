@@ -7,6 +7,7 @@ import (
 	"gobattle/btsession"
 	"gobattle/game/model"
 	"gobattle/game/protocol"
+	"gobattle/game/tpl"
 	"maps"
 	"net"
 	"slices"
@@ -17,14 +18,8 @@ import (
 
 const (
 	defaultMatchScore = 1000
-	matchTimeout      = 30 * time.Second
 	matchTickInterval = time.Second
 )
-
-var modePlayerCount = map[int]int{
-	1: 2, // 1v1
-	2: 4, // 2v2
-}
 
 type matchPoolKey struct {
 	gameMode int
@@ -51,6 +46,7 @@ type matchGroup struct {
 type MatchService struct {
 	battleService *BattleService
 	pushService   *PushService
+	tplMgr        *tpl.TplManager
 
 	mu                  sync.Mutex
 	matchPools          map[matchPoolKey]map[int64]*matchPlayer
@@ -59,10 +55,11 @@ type MatchService struct {
 	tick *tickLoop
 }
 
-func NewMatchService(battleService *BattleService, pushService *PushService, sessionMgr *btsession.Manager) *MatchService {
+func NewMatchService(battleService *BattleService, pushService *PushService, sessionMgr *btsession.Manager, tplMgr *tpl.TplManager) *MatchService {
 	s := &MatchService{
 		battleService:       battleService,
 		pushService:         pushService,
+		tplMgr:              tplMgr,
 		matchPools:          make(map[matchPoolKey]map[int64]*matchPlayer),
 		matchPlayerByUserId: make(map[int64]*matchPlayer),
 	}
@@ -80,7 +77,7 @@ func (s *MatchService) Stop() {
 }
 
 func (s *MatchService) Join(session *btsession.Session, gameMode, mapId int) error {
-	if _, ok := modePlayerCount[gameMode]; !ok || mapId <= 0 {
+	if modeTpl, ok := s.tplMgr.GetMatchModeTpl(gameMode); !ok || !modeTpl.HasMap(mapId) {
 		return protocol.CodeMatchInvalidParam
 	}
 	if s.battleService.GetUserBattle(session.UserId()) != nil {
@@ -141,7 +138,7 @@ func (s *MatchService) matchTick() {
 	s.mu.Lock()
 	var matchedGroups []*matchGroup
 	for poolKey, pool := range s.matchPools {
-		playerCount := modePlayerCount[poolKey.gameMode]
+		modeTpl, _ := s.tplMgr.GetMatchModeTpl(poolKey.gameMode)
 		// 先入池的先匹配，以他为基准挑分数最近的人
 		sortedPlayers := slices.SortedFunc(maps.Values(pool), func(a, b *matchPlayer) int { return a.joinTime.Compare(b.joinTime) })
 		for _, p := range sortedPlayers {
@@ -149,8 +146,8 @@ func (s *MatchService) matchTick() {
 			if s.matchPlayerByUserId[p.userId] != p {
 				continue
 			}
-			timeout := now.Sub(p.joinTime) >= matchTimeout
-			opponents := s.pickOpponentsLocked(p, playerCount-1, timeout)
+			timeout := now.Sub(p.joinTime) >= modeTpl.MatchTimeout()
+			opponents := s.pickOpponentsLocked(p, modeTpl.PlayerCount-1, timeout)
 			if opponents == nil {
 				continue
 			}

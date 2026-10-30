@@ -1,0 +1,4 @@
+[
+  {"id": 1, "name": "pve", "playerCount": 2, "mapIds": [1], "matchTimeoutSec": 30},
+  {"id": 2, "name": "pvp", "playerCount": 2, "mapIds": [2, 3], "matchTimeoutSec": 30}
+]
