@@ -28,9 +28,5 @@ func (m *ItemModule) ListItem(ctx *btrouter.RequestContext, _ *protocol.ItemList
 	if err != nil {
 		return nil, err
 	}
-	resp := &protocol.ItemListResp{Items: make([]*protocol.ItemInfo, 0, len(items))}
-	for _, item := range items {
-		resp.Items = append(resp.Items, &protocol.ItemInfo{Category: item.Category, ItemId: item.ItemId, Count: item.Count})
-	}
-	return resp, nil
+	return &protocol.ItemListResp{Items: items}, nil
 }

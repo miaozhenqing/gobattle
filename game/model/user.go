@@ -4,7 +4,7 @@ type User struct {
 	UserId        int64  `db:"id"`
 	Username      string `db:"username"`
 	RoleName      string `db:"roleName"`
-	ItemSeq       int64  `db:"itemSeq"`
 	CreateTime    int64  `db:"createTime"`
 	LastLoginTime int64  `db:"lastLoginTime"`
+	UpdateTime    int64  `db:"updateTime"`
 }

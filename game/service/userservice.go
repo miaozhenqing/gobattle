@@ -6,16 +6,19 @@ import (
 	"gobattle/game/model"
 	"gobattle/game/repository"
 	"time"
+
+	"github.com/bwmarrin/snowflake"
 )
 
 type UserService struct {
-	db *repository.DB
+	db     *repository.DB
+	idNode *snowflake.Node
 	// 单次业务请求内 DB 操作的总超时
 	queryTimeout time.Duration
 }
 
-func NewUserService(db *repository.DB, queryTimeout time.Duration) *UserService {
-	return &UserService{db: db, queryTimeout: queryTimeout}
+func NewUserService(db *repository.DB, idNode *snowflake.Node, queryTimeout time.Duration) *UserService {
+	return &UserService{db: db, idNode: idNode, queryTimeout: queryTimeout}
 }
 
 type LoginResult struct {
@@ -45,10 +48,11 @@ func (s *UserService) login(ctx context.Context, username string) (*LoginResult,
 			return nil, err
 		}
 		if user == nil {
-			user = &model.User{Username: username, RoleName: username, CreateTime: now, LastLoginTime: now}
+			user = &model.User{UserId: s.idNode.Generate().Int64(), Username: username, RoleName: username, CreateTime: now, LastLoginTime: now, UpdateTime: now}
 			return &LoginResult{User: user, Created: true}, store.User.Insert(ctx, user)
 		}
 		user.LastLoginTime = now
+		user.UpdateTime = now
 		err = store.User.UpdateLastLoginTime(ctx, user.UserId, now)
 		return &LoginResult{User: user}, err
 	})

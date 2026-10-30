@@ -151,7 +151,9 @@ type MatchFailPush struct {
 }
 
 // ==============item
+
 type ItemInfo struct {
+	Id       int64 `json:"id"`
 	Category int   `json:"category"`
 	ItemId   int   `json:"itemId"`
 	Count    int64 `json:"count"`
@@ -164,10 +166,8 @@ type ItemListResp struct {
 }
 
 type ItemChangeInfo struct {
-	Category int   `json:"category"`
-	ItemId   int   `json:"itemId"`
-	Before   int64 `json:"before"`
-	After    int64 `json:"after"`
+	ItemInfo
+	Before int64 `json:"before"`
 }
 
 type ItemChangePush struct {

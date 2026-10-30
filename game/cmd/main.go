@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/bwmarrin/snowflake"
 )
 
 // 方便统一关闭
@@ -40,11 +42,15 @@ func main() {
 	db := openDB()
 	gameRouterHandler, dsRouterHandler := newRouterHandlers()
 	sessionMgr := btsession.NewManager()
+	idNode, err := snowflake.NewNode(config.GameServer.NodeId)
+	if err != nil {
+		panic(err)
+	}
 
 	// service：按依赖顺序构造
-	userService := service.NewUserService(db, config.DB.QueryTimeout)
+	userService := service.NewUserService(db, idNode, config.DB.QueryTimeout)
 	pushService := service.NewPushService(gameRouterHandler, dsRouterHandler, sessionMgr)
-	itemService := service.NewItemService(db, pushService, config.DB.QueryTimeout)
+	itemService := service.NewItemService(db, pushService, idNode, config.DB.QueryTimeout)
 	dsService := service.NewDsService()
 	battleService := service.NewBattleService(dsService, pushService)
 	matchService := service.NewMatchService(battleService, pushService, sessionMgr)

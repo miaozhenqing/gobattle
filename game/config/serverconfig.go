@@ -19,6 +19,8 @@ type ServerConfig struct {
 	IOLoopSize int
 	//业务 loop 数量
 	BizLoopSize int
+	//节点 id
+	NodeId int64
 }
 
 func init() {
@@ -26,6 +28,7 @@ func init() {
 		Options:     btnet.DefaultOptions(),
 		IOLoopSize:  runtime.NumCPU(),
 		BizLoopSize: 10,
+		NodeId:      1,
 	}
 
 	dsOpts := btnet.DefaultOptions()
