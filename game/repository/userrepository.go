@@ -42,6 +42,18 @@ func (r *UserRepository) Insert(ctx context.Context, user *model.User) error {
 }
 
 func (r *UserRepository) UpdateLastLoginTime(ctx context.Context, userId int64, loginTime int64) error {
-	_, err := r.tx.ExecContext(ctx, "UPDATE `user` SET lastLoginTime = ? WHERE uid = ?", loginTime, userId)
+	_, err := r.tx.ExecContext(ctx, "UPDATE `user` SET lastLoginTime = ? WHERE id = ?", loginTime, userId)
 	return err
+}
+
+// 锁玩家行并读出道具序号
+func (r *UserRepository) GetItemSeqForUpdate(ctx context.Context, userId int64) (itemSeq int64, exists bool, err error) {
+	err = r.tx.GetContext(ctx, &itemSeq, "SELECT itemSeq FROM `user` WHERE id = ? FOR UPDATE", userId)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return itemSeq, true, nil
 }

@@ -44,6 +44,7 @@ func main() {
 	// service：按依赖顺序构造
 	userService := service.NewUserService(db, config.DB.QueryTimeout)
 	pushService := service.NewPushService(gameRouterHandler, dsRouterHandler, sessionMgr)
+	itemService := service.NewItemService(db, pushService, config.DB.QueryTimeout)
 	dsService := service.NewDsService()
 	battleService := service.NewBattleService(dsService, pushService)
 	matchService := service.NewMatchService(battleService, pushService, sessionMgr)
@@ -52,7 +53,8 @@ func main() {
 	loginModule := module.NewLoginModule(userService, pushService, sessionMgr)
 	battleModule := module.NewBattleModule(matchService, battleService)
 	dsModule := module.NewDsModule(dsService)
-	gameRouterHandler.RegisterModules(loginModule, battleModule)
+	itemModule := module.NewItemModule(itemService)
+	gameRouterHandler.RegisterModules(loginModule, battleModule, itemModule)
 	dsRouterHandler.RegisterModules(dsModule)
 	battleModule.RegisterDsRoutes(dsRouterHandler)
 

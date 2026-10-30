@@ -4,7 +4,8 @@ import "gobattle/btrouter"
 
 const (
 	// ==================== 通用 ====================
-	CodeDBFailed btrouter.Code = 10001 // 数据库操作失败
+	CodeDBFailed     btrouter.Code = 10001 // 数据库操作失败
+	CodeUserNotFound btrouter.Code = 10002 // 玩家不存在
 
 	// ==================== 登录 ====================
 	CodeInvalidUsername btrouter.Code = 10101 // username 为空、非法或过长
@@ -26,4 +27,8 @@ const (
 	CodeBattleNotFound   btrouter.Code = 10401 // 战斗不存在或不属于当前DS
 	CodeBattleStateError btrouter.Code = 10402 // 战斗状态不对
 	CodeBattleAlreadyIn  btrouter.Code = 10403 // 已在战斗中
+
+	// ==================== 道具 ====================
+	CodeItemInvalidParam btrouter.Code = 10501 // 道具类型未注册、数量非法或单次条目过多
+	CodeItemNotEnough    btrouter.Code = 10502 // 道具不足
 )

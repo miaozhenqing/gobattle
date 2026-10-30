@@ -38,7 +38,7 @@ func (s *UserService) Login(ctx context.Context, username string) (*LoginResult,
 }
 
 func (s *UserService) login(ctx context.Context, username string) (*LoginResult, error) {
-	return repository.Tx(ctx, s.db, func(store *repository.TxStore) (*LoginResult, error) {
+	return repository.Transact(ctx, s.db, func(store *repository.TxStore) (*LoginResult, error) {
 		now := time.Now().UnixMilli()
 		user, err := store.User.GetByUsernameForUpdate(ctx, username)
 		if err != nil {

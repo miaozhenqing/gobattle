@@ -14,11 +14,14 @@ const (
 	MsgDsBattleEnd   uint32 = 1401
 	MsgDsBattleStart uint32 = 1402
 	MsgBattleQuery   uint32 = 1403
+	// ==================== 道具 ====================
+	MsgItemList uint32 = 1501
 	// ==================== 推送 ====================
 	PushKick         uint32 = 51002
 	PushMatchSuccess uint32 = 51003
 	PushMatchFail    uint32 = 51004
 	PushBattleEnd    uint32 = 51005
+	PushItemChange   uint32 = 51006
 	// ==================== 推送给DS ====================
 	PushDsBattleAssign uint32 = 51101
 )
@@ -145,4 +148,29 @@ type MatchSuccessPush struct {
 
 type MatchFailPush struct {
 	Code uint32 `json:"code"`
+}
+
+// ==============item
+type ItemInfo struct {
+	Category int   `json:"category"`
+	ItemId   int   `json:"itemId"`
+	Count    int64 `json:"count"`
+}
+
+type ItemListReq struct{}
+
+type ItemListResp struct {
+	Items []*ItemInfo `json:"items"`
+}
+
+type ItemChangeInfo struct {
+	Category int   `json:"category"`
+	ItemId   int   `json:"itemId"`
+	Before   int64 `json:"before"`
+	After    int64 `json:"after"`
+}
+
+type ItemChangePush struct {
+	Reason  int               `json:"reason"`
+	Changes []*ItemChangeInfo `json:"changes"`
 }
