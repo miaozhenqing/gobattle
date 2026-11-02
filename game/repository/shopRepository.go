@@ -25,13 +25,15 @@ func (s *ShopRepository) GetByUserIdAndShopIdForUpdate(ctx context.Context, user
 }
 
 func (s *ShopRepository) Insert(ctx context.Context, userShop *model.UserShop) error {
-	_, err := s.tx.ExecContext(ctx, "insert into user_shop  values (?, ?, ?, ?, ?, ?, ?)",
-		userShop.Id, userShop.UserId, userShop.CreateTime, userShop.UpdateTime, userShop.ShopId, userShop.BuyCount, userShop.LastBuyTime)
+	_, err := s.tx.NamedExecContext(ctx,
+		"insert into user_shop (id, userId, createTime, updateTime, shopId, buyCount, lastBuyTime) values (:id, :userId, :createTime, :updateTime, :shopId, :buyCount, :lastBuyTime)",
+		userShop)
 	return err
 }
 
 func (s *ShopRepository) Update(ctx context.Context, userShop *model.UserShop) error {
-	_, err := s.tx.NamedExec("update user_shop set buyCount = ?, lastBuyTime = ?, updateTime = ? where id = ?",
+	_, err := s.tx.NamedExecContext(ctx,
+		"update user_shop set buyCount = :buyCount, lastBuyTime = :lastBuyTime, updateTime = :updateTime where id = :id",
 		userShop)
 	return err
 }

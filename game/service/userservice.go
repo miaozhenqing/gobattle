@@ -53,7 +53,7 @@ func (s *UserService) login(ctx context.Context, username string) (*LoginResult,
 		}
 		user.LastLoginTime = now
 		user.UpdateTime = now
-		err = store.User.UpdateLastLoginTime(ctx, user.UserId, now)
+		err = store.User.Update(ctx, user)
 		return &LoginResult{User: user}, err
 	})
 }

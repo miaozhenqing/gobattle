@@ -7,6 +7,7 @@ const (
 	CodeDBFailed           btrouter.Code = 10001 // 数据库操作失败
 	CodeUserNotFound       btrouter.Code = 10002 // 玩家不存在
 	CodeCommonInvalidParam btrouter.Code = 10003 // 参数错误-定义一个通用的减轻编码负担
+	CodeCommonLimitExceed  btrouter.Code = 10004 // 超过上限
 
 	// ==================== 登录 ====================
 	CodeInvalidUsername btrouter.Code = 10101 // username 为空、非法或过长

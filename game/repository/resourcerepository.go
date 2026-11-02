@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"gobattle/game/model"
-	"strings"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -36,17 +35,9 @@ func (r *ResourceRepository) Upsert(ctx context.Context, resources []*model.User
 	if len(resources) == 0 {
 		return nil
 	}
-	var sb strings.Builder
-	sb.WriteString("insert into `user_item_resource` (id, userId, itemId, count, createTime, updateTime) values ")
-	args := make([]any, 0, len(resources)*6)
-	for i, res := range resources {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString("(?, ?, ?, ?, ?, ?)")
-		args = append(args, res.Id, res.UserId, res.ItemId, res.Count, res.CreateTime, res.UpdateTime)
-	}
-	sb.WriteString(" on duplicate key update count = values(count), updateTime = values(updateTime)")
-	_, err := r.tx.ExecContext(ctx, sb.String(), args...)
+	_, err := r.tx.NamedExecContext(ctx,
+		"insert into `user_item_resource` (id, userId, itemId, count, createTime, updateTime) values (:id, :userId, :itemId, :count, :createTime, :updateTime)"+
+			" on duplicate key update count = values(count), updateTime = values(updateTime)",
+		resources)
 	return err
 }

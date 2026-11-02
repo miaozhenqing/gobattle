@@ -27,14 +27,16 @@ func (r *UserRepository) GetByUsernameForUpdate(ctx context.Context, username st
 }
 
 func (r *UserRepository) Insert(ctx context.Context, user *model.User) error {
-	_, err := r.tx.ExecContext(ctx,
-		"insert into `user` (id, username, roleName, createTime, lastLoginTime, updateTime) values (?, ?, ?, ?, ?, ?)",
-		user.UserId, user.Username, user.RoleName, user.CreateTime, user.LastLoginTime, user.UpdateTime)
+	_, err := r.tx.NamedExecContext(ctx,
+		"insert into `user` (id, username, roleName, createTime, lastLoginTime, updateTime) values (:id, :username, :roleName, :createTime, :lastLoginTime, :updateTime)",
+		user)
 	return err
 }
 
-func (r *UserRepository) UpdateLastLoginTime(ctx context.Context, userId int64, loginTime int64) error {
-	_, err := r.tx.ExecContext(ctx, "update `user` set lastLoginTime = ?, updateTime = ? where id = ?", loginTime, loginTime, userId)
+func (r *UserRepository) Update(ctx context.Context, user *model.User) error {
+	_, err := r.tx.NamedExecContext(ctx,
+		"update `user` set roleName = :roleName, lastLoginTime = :lastLoginTime, updateTime = :updateTime where id = :id",
+		user)
 	return err
 }
 

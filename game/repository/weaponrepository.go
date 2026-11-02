@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"gobattle/game/model"
-	"strings"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -35,18 +34,10 @@ func (r *WeaponRepository) Insert(ctx context.Context, weapons []*model.UserWeap
 	if len(weapons) == 0 {
 		return nil
 	}
-	var sb strings.Builder
-	//todo 写法优化
-	sb.WriteString("insert into `user_item_weapon` (id, userId, itemId, count, level, createTime, updateTime) values ")
-	args := make([]any, 0, len(weapons)*7)
-	for i, w := range weapons {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString("(?, ?, ?, ?, ?, ?, ?)")
-		args = append(args, w.Id, w.UserId, w.ItemId, w.Count, w.Level, w.CreateTime, w.UpdateTime)
-	}
-	_, err := r.tx.ExecContext(ctx, sb.String(), args...)
+
+	_, err := r.tx.NamedExecContext(ctx,
+		"insert into `user_item_weapon` (id, userId, itemId, count, level, createTime, updateTime) values (:id, :userId, :itemId, :count, :level, :createTime, :updateTime)",
+		weapons)
 	return err
 }
 
