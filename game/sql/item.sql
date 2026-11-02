@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `item_resource` (
+CREATE TABLE IF NOT EXISTS `user_item_resource` (
   `id`         BIGINT NOT NULL COMMENT 'id',
   `userId`     BIGINT NOT NULL DEFAULT 0 COMMENT '玩家id',
   `itemId`     INT    NOT NULL DEFAULT 0 COMMENT '道具id',
@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS `item_resource` (
   UNIQUE KEY `uk_userId_itemId` (`userId`, `itemId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='玩家资源（金币等货币）';
 
-CREATE TABLE IF NOT EXISTS `item_weapon` (
+CREATE TABLE IF NOT EXISTS `user_item_weapon` (
   `id`         BIGINT NOT NULL COMMENT 'id',
   `userId`     BIGINT NOT NULL DEFAULT 0 COMMENT '玩家id',
   `itemId`     INT    NOT NULL DEFAULT 0 COMMENT '道具id',

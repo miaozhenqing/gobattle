@@ -22,9 +22,9 @@ func (h *weaponItemHandler) List(ctx context.Context, store *repository.TxStore,
 }
 
 func (h *weaponItemHandler) Add(ctx context.Context, store *repository.TxStore, userId int64, itemId int, ids []int64, now int64) error {
-	weapons := make([]*model.Weapon, 0, len(ids))
+	weapons := make([]*model.UserWeapon, 0, len(ids))
 	for _, id := range ids {
-		weapons = append(weapons, &model.Weapon{ItemBase: model.ItemBase{Id: id, UserId: userId, ItemId: itemId, Count: 1, CreateTime: now, UpdateTime: now},
+		weapons = append(weapons, &model.UserWeapon{ItemBase: model.ItemBase{Id: id, UserId: userId, ItemId: itemId, Count: 1, CreateTime: now, UpdateTime: now},
 			Level: 1})
 	}
 	return store.Weapon.Insert(ctx, weapons)

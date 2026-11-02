@@ -17,12 +17,12 @@ type ItemBase struct {
 }
 
 // 资源
-type Resource struct {
+type UserResource struct {
 	ItemBase
 }
 
 // 武器
-type Weapon struct {
+type UserWeapon struct {
 	ItemBase
 	Level int `db:"level"`
 }

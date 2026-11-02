@@ -31,17 +31,17 @@ func (h *ResourceItemHandler) UpdateCount(ctx context.Context, store *repository
 	if err != nil {
 		return nil, err
 	}
-	resourceByItemId := make(map[int]*model.Resource, len(resources))
+	resourceByItemId := make(map[int]*model.UserResource, len(resources))
 	for _, res := range resources {
 		resourceByItemId[res.ItemId] = res
 	}
 
-	upserts := make([]*model.Resource, 0, len(deltaByItemId))
+	upserts := make([]*model.UserResource, 0, len(deltaByItemId))
 	changes := make([]*model.ItemChange, 0, len(deltaByItemId))
 	for itemId, delta := range deltaByItemId {
 		res, ok := resourceByItemId[itemId]
 		if !ok {
-			res = &model.Resource{ItemBase: model.ItemBase{Id: newId(), UserId: userId, ItemId: itemId, CreateTime: now}}
+			res = &model.UserResource{ItemBase: model.ItemBase{Id: newId(), UserId: userId, ItemId: itemId, CreateTime: now}}
 		}
 		before := res.Count
 		if before < delta.Cost {

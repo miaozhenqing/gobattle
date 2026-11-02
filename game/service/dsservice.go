@@ -3,38 +3,52 @@ package service
 import (
 	"gobattle/btlog"
 	"gobattle/btnet"
-	"gobattle/game/model"
 	"gobattle/game/protocol"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-var dsKey = btnet.NewAttrKey[*model.Ds]("service.ds")
+const (
+	dsStateIdle int32 = 0
+	dsStateBusy int32 = 1
+)
 
-func GetDs(conn *btnet.Connection) (*model.Ds, bool) {
+type Ds struct {
+	Id           int64
+	IP           string
+	Port         int
+	RegisterTime int64
+	Conn         *btnet.Connection
+	State        atomic.Int32
+}
+
+var dsKey = btnet.NewAttrKey[*Ds]("service.ds")
+
+func GetDs(conn *btnet.Connection) (*Ds, bool) {
 	return dsKey.Get(conn)
 }
 
 type DsService struct {
 	mu                  sync.RWMutex
-	dsById              map[int64]*model.Ds
-	unregisterListeners []func(ds *model.Ds)
+	dsById              map[int64]*Ds
+	unregisterListeners []func(ds *Ds)
 }
 
 func NewDsService() *DsService {
-	return &DsService{dsById: make(map[int64]*model.Ds)}
+	return &DsService{dsById: make(map[int64]*Ds)}
 }
 
-func (s *DsService) OnUnregister(fn func(ds *model.Ds)) {
+func (s *DsService) OnUnregister(fn func(ds *Ds)) {
 	s.unregisterListeners = append(s.unregisterListeners, fn)
 }
 
-func (s *DsService) Register(conn *btnet.Connection, dsId int64, ip string, port int) (*model.Ds, error) {
+func (s *DsService) Register(conn *btnet.Connection, dsId int64, ip string, port int) (*Ds, error) {
 	if _, ok := dsKey.Get(conn); ok {
 		return nil, protocol.CodeDsAlreadyRegistered
 	}
 
-	ds := &model.Ds{
+	ds := &Ds{
 		Id:           dsId,
 		IP:           ip,
 		Port:         port,
@@ -75,7 +89,7 @@ func (s *DsService) Unregister(conn *btnet.Connection) {
 }
 
 // 先随机选一个可用的
-func (s *DsService) PickDs() *model.Ds {
+func (s *DsService) PickDs() *Ds {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, ds := range s.dsById {
@@ -86,10 +100,10 @@ func (s *DsService) PickDs() *model.Ds {
 	return nil
 }
 
-func (s *DsService) ReleaseDs(ds *model.Ds) bool {
-	return ds.State.CompareAndSwap(model.DsStateBusy, model.DsStateIdle)
+func (s *DsService) ReleaseDs(ds *Ds) bool {
+	return ds.State.CompareAndSwap(dsStateBusy, dsStateIdle)
 }
 
-func tryOccupy(ds *model.Ds) bool {
-	return ds.State.CompareAndSwap(model.DsStateIdle, model.DsStateBusy)
+func tryOccupy(ds *Ds) bool {
+	return ds.State.CompareAndSwap(dsStateIdle, dsStateBusy)
 }

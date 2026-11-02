@@ -5,7 +5,6 @@ import (
 	"errors"
 	"gobattle/btlog"
 	"gobattle/btsession"
-	"gobattle/game/model"
 	"gobattle/game/protocol"
 	"gobattle/game/tpl"
 	"maps"
@@ -207,9 +206,9 @@ func (s *MatchService) removeFromPoolLocked(p *matchPlayer) {
 }
 
 func (s *MatchService) startBattle(group *matchGroup) {
-	players := make([]*model.BattlePlayer, 0, len(group.players))
+	players := make([]*BattlePlayer, 0, len(group.players))
 	for i, p := range group.players {
-		players = append(players, &model.BattlePlayer{UserId: p.userId, MatchScore: p.matchScore, Team: i % 2})
+		players = append(players, &BattlePlayer{UserId: p.userId, MatchScore: p.matchScore, Team: i % 2})
 	}
 
 	battle, err := s.battleService.Create(group.poolKey.gameMode, group.poolKey.mapId, players)

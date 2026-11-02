@@ -12,6 +12,7 @@ import (
 type TplManager struct {
 	itemTplById      *treemap.Map
 	matchModeTplById *treemap.Map
+	shopTplById      *treemap.Map
 }
 
 // todo 暂时读取系统配置json文件
@@ -24,7 +25,14 @@ func Load(dir string) (*TplManager, error) {
 	if m.matchModeTplById, err = loadTable(dir, "matchmode.json", func(t *MatchModeTpl) int { return t.Id }); err != nil {
 		return nil, err
 	}
+	if m.shopTplById, err = loadTable(dir, "shop.json", func(t *ShopTpl) int { return t.Id }); err != nil {
+		return nil, err
+	}
 	return m, nil
+}
+
+func (m *TplManager) GetShopTpl(id int) (*ShopTpl, bool) {
+	return getTpl[ShopTpl](m.shopTplById, id)
 }
 
 func (m *TplManager) GetItemTpl(id int) (*ItemTpl, bool) {

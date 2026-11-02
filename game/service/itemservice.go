@@ -94,6 +94,7 @@ func (s *ItemService) updateItem(ctx context.Context, userId int64, costs []mode
 	return res, nil
 }
 
+// todo 所有道具扣减都是在事务中进行，后期需要考虑长事务问题或死锁问题
 func (s *ItemService) doUpdateItem(ctx context.Context, store *repository.TxStore, res *model.ItemChangeResult, ops *itemOps) (*model.ItemChangeResult, error) {
 	userId := res.UserId
 	if err := s.lockUser(ctx, store, userId); err != nil {

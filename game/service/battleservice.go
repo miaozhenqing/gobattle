@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"gobattle/btlog"
-	"gobattle/game/model"
 	"gobattle/game/protocol"
 	"sync"
 	"sync/atomic"
@@ -16,12 +15,34 @@ const (
 	battleTickInterval = time.Second
 )
 
+const (
+	battleStateWaiting = 1 // 已分配ds
+	battleStateRunning = 2 // 战斗中
+)
+
+type BattlePlayer struct {
+	UserId     int64
+	MatchScore int
+	Team       int
+}
+
+type Battle struct {
+	Id         int64
+	GameMode   int
+	MapId      int
+	Ds         *Ds
+	Players    []*BattlePlayer
+	State      int
+	CreateTime int64
+	StartTime  int64
+}
+
 type BattleService struct {
 	dsService   *DsService
 	pushService *PushService
 
 	mu               sync.Mutex
-	battleById       map[int64]*model.Battle
+	battleById       map[int64]*Battle
 	battleIdByUserId map[int64]int64
 
 	//todo battleId要全局唯一
@@ -33,7 +54,7 @@ func NewBattleService(dsService *DsService, pushService *PushService) *BattleSer
 	s := &BattleService{
 		dsService:        dsService,
 		pushService:      pushService,
-		battleById:       make(map[int64]*model.Battle),
+		battleById:       make(map[int64]*Battle),
 		battleIdByUserId: make(map[int64]int64),
 	}
 	s.battleIdSeq.Store(time.Now().UnixMilli())
@@ -55,20 +76,20 @@ func (s *BattleService) nextBattleId() int64 {
 }
 
 // 选ds并通知ds开局；玩家还没收到匹配成功，失败时不推战斗结束
-func (s *BattleService) Create(gameMode, mapId int, players []*model.BattlePlayer) (*model.Battle, error) {
+func (s *BattleService) Create(gameMode, mapId int, players []*BattlePlayer) (*Battle, error) {
 	ds := s.dsService.PickDs()
 	if ds == nil {
 		btlog.Ins().Warn("matchNoAvailableDs", "gameMode", gameMode, "mapId", mapId, "playerIds", playerIdsOf(players))
 		return nil, protocol.CodeMatchNoDs
 	}
 
-	battle := &model.Battle{
+	battle := &Battle{
 		Id:         s.nextBattleId(),
 		GameMode:   gameMode,
 		MapId:      mapId,
 		Ds:         ds,
 		Players:    players,
-		State:      model.BattleStateWaiting,
+		State:      battleStateWaiting,
 		CreateTime: time.Now().UnixMilli(),
 	}
 	s.mu.Lock()
@@ -91,24 +112,24 @@ func (s *BattleService) Create(gameMode, mapId int, players []*model.BattlePlaye
 	return battle, nil
 }
 
-func (s *BattleService) GetUserBattle(userId int64) *model.Battle {
+func (s *BattleService) GetUserBattle(userId int64) *Battle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.battleById[s.battleIdByUserId[userId]]
 }
 
-func (s *BattleService) Start(ds *model.Ds, battleId int64) (*model.Battle, error) {
+func (s *BattleService) Start(ds *Ds, battleId int64) (*Battle, error) {
 	s.mu.Lock()
 	battle, err := s.getDsOwnedLocked(ds, battleId)
 	if err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
-	if battle.State != model.BattleStateWaiting {
+	if battle.State != battleStateWaiting {
 		s.mu.Unlock()
 		return nil, protocol.CodeBattleStateError
 	}
-	battle.State = model.BattleStateRunning
+	battle.State = battleStateRunning
 	battle.StartTime = time.Now().UnixMilli()
 	s.mu.Unlock()
 
@@ -116,14 +137,14 @@ func (s *BattleService) Start(ds *model.Ds, battleId int64) (*model.Battle, erro
 	return battle, nil
 }
 
-func (s *BattleService) End(ds *model.Ds, battleId int64, statistics map[int]int) (*model.Battle, error) {
+func (s *BattleService) End(ds *Ds, battleId int64, statistics map[int]int) (*Battle, error) {
 	s.mu.Lock()
 	battle, err := s.getDsOwnedLocked(ds, battleId)
 	if err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
-	if battle.State != model.BattleStateRunning {
+	if battle.State != battleStateRunning {
 		s.mu.Unlock()
 		return nil, protocol.CodeBattleStateError
 	}
@@ -138,7 +159,7 @@ func (s *BattleService) End(ds *model.Ds, battleId int64, statistics map[int]int
 	return battle, nil
 }
 
-func (s *BattleService) getDsOwnedLocked(ds *model.Ds, battleId int64) (*model.Battle, error) {
+func (s *BattleService) getDsOwnedLocked(ds *Ds, battleId int64) (*Battle, error) {
 	battle := s.battleById[battleId]
 	if battle == nil || battle.Ds != ds {
 		return nil, protocol.CodeBattleNotFound
@@ -146,7 +167,7 @@ func (s *BattleService) getDsOwnedLocked(ds *model.Ds, battleId int64) (*model.B
 	return battle, nil
 }
 
-func (s *BattleService) removeLocked(battle *model.Battle) bool {
+func (s *BattleService) removeLocked(battle *Battle) bool {
 	if s.battleById[battle.Id] != battle {
 		return false
 	}
@@ -159,7 +180,7 @@ func (s *BattleService) removeLocked(battle *model.Battle) bool {
 	return true
 }
 
-func (s *BattleService) abort(battle *model.Battle, reason string) {
+func (s *BattleService) abort(battle *Battle, reason string) {
 	s.mu.Lock()
 	removed := s.removeLocked(battle)
 	state := battle.State
@@ -173,7 +194,7 @@ func (s *BattleService) abort(battle *model.Battle, reason string) {
 }
 
 type timeoutBattle struct {
-	battle *model.Battle
+	battle *Battle
 	reason string
 }
 
@@ -184,9 +205,9 @@ func (s *BattleService) checkTimeout() {
 	s.mu.Lock()
 	for _, battle := range s.battleById {
 		switch {
-		case battle.State == model.BattleStateWaiting && now-battle.CreateTime >= battleStartTimeout.Milliseconds():
+		case battle.State == battleStateWaiting && now-battle.CreateTime >= battleStartTimeout.Milliseconds():
 			timeoutBattles = append(timeoutBattles, timeoutBattle{battle, "startTimeout"})
-		case battle.State == model.BattleStateRunning && now-battle.StartTime >= battleMaxDuration.Milliseconds():
+		case battle.State == battleStateRunning && now-battle.StartTime >= battleMaxDuration.Milliseconds():
 			timeoutBattles = append(timeoutBattles, timeoutBattle{battle, "durationExceeded"})
 		}
 	}
@@ -197,8 +218,8 @@ func (s *BattleService) checkTimeout() {
 	}
 }
 
-func (s *BattleService) onDsUnregister(ds *model.Ds) {
-	var dsBattles []*model.Battle
+func (s *BattleService) onDsUnregister(ds *Ds) {
+	var dsBattles []*Battle
 	s.mu.Lock()
 	for _, battle := range s.battleById {
 		if battle.Ds == ds {
@@ -212,7 +233,7 @@ func (s *BattleService) onDsUnregister(ds *model.Ds) {
 	}
 }
 
-func (s *BattleService) pushBattleEnd(battle *model.Battle, reason int) {
+func (s *BattleService) pushBattleEnd(battle *Battle, reason int) {
 	push := &protocol.BattleEndPush{BattleId: battle.Id, Reason: reason}
 	for _, p := range battle.Players {
 		if err := s.pushService.PushUser(p.UserId, protocol.PushBattleEnd, push); err != nil && !errors.Is(err, errUserOffline) {
@@ -221,7 +242,7 @@ func (s *BattleService) pushBattleEnd(battle *model.Battle, reason int) {
 	}
 }
 
-func toPlayerInfos(players []*model.BattlePlayer) []*protocol.MatchPlayerInfo {
+func toPlayerInfos(players []*BattlePlayer) []*protocol.MatchPlayerInfo {
 	infos := make([]*protocol.MatchPlayerInfo, 0, len(players))
 	for _, p := range players {
 		infos = append(infos, &protocol.MatchPlayerInfo{UserId: p.UserId, MatchScore: p.MatchScore, Team: p.Team})
@@ -229,7 +250,7 @@ func toPlayerInfos(players []*model.BattlePlayer) []*protocol.MatchPlayerInfo {
 	return infos
 }
 
-func playerIdsOf(players []*model.BattlePlayer) []int64 {
+func playerIdsOf(players []*BattlePlayer) []int64 {
 	ids := make([]int64, 0, len(players))
 	for _, p := range players {
 		ids = append(ids, p.UserId)
