@@ -7,6 +7,9 @@ type TxStore struct {
 	Resource *ResourceRepository
 	Weapon   *WeaponRepository
 	Shop     *ShopRepository
+
+	rollback     bool
+	afterCommits []func()
 }
 
 func newTxStore(tx *sqlx.Tx) *TxStore {

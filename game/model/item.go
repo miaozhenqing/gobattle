@@ -3,6 +3,7 @@ package model
 const (
 	ItemReasonGm        = 1
 	ItemReasonBattleEnd = 2
+	ItemReasonShopBuy   = 3
 )
 
 // 道具公共字段，各类型道具表都包含这些列

@@ -40,7 +40,7 @@ func NewItemService(db *repository.DB, pushService *PushService, idNode *snowfla
 func (s *ItemService) List(ctx context.Context, userId int64) ([]*protocol.ItemInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
-	items, err := repository.Transact(ctx, s.db, func(store *repository.TxStore) ([]*protocol.ItemInfo, error) {
+	items, err := repository.Transact(ctx, s.db, func(ctx context.Context, store *repository.TxStore) ([]*protocol.ItemInfo, error) {
 		var items []*protocol.ItemInfo
 		//todo 优化查询
 		for _, def := range model.ItemCategoryDefs() {
@@ -65,15 +65,15 @@ func newItemInfo(category model.ItemCategory, id int64, itemId int, count int64)
 }
 
 func (s *ItemService) Add(ctx context.Context, userId int64, adds []model.ItemChangeReq, reason int) (*model.ItemChangeResult, error) {
-	return s.updateItem(ctx, userId, nil, adds, reason)
+	return s.change(ctx, userId, nil, adds, reason)
 }
 
 func (s *ItemService) Decr(ctx context.Context, userId int64, costs []model.ItemChangeReq, reason int) (*model.ItemChangeResult, error) {
-	return s.updateItem(ctx, userId, costs, nil, reason)
+	return s.change(ctx, userId, costs, nil, reason)
 }
 
-// 先扣后加,任一道具不足则全部不生效
-func (s *ItemService) updateItem(ctx context.Context, userId int64, costs []model.ItemChangeReq, adds []model.ItemChangeReq, reason int) (*model.ItemChangeResult, error) {
+// 先扣后加,任一道具不足则全部不生效；在调用方事务内则加入，推送在提交后执行
+func (s *ItemService) change(ctx context.Context, userId int64, costs []model.ItemChangeReq, adds []model.ItemChangeReq, reason int) (*model.ItemChangeResult, error) {
 	ops, err := s.mergeItemOps(costs, adds)
 	if err != nil {
 		return nil, err
@@ -84,20 +84,24 @@ func (s *ItemService) updateItem(ctx context.Context, userId int64, costs []mode
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
-	res, err = repository.Transact(ctx, s.db, func(store *repository.TxStore) (*model.ItemChangeResult, error) {
-		return s.doUpdateItem(ctx, store, res, ops)
+	res, err = repository.Transact(ctx, s.db, func(ctx context.Context, store *repository.TxStore) (*model.ItemChangeResult, error) {
+		res, err := s.doUpdateItem(ctx, store, res, ops)
+		if err != nil {
+			return nil, err
+		}
+		repository.AfterCommit(ctx, func() { s.NotifyChange(res) })
+		return res, nil
 	})
 	if err != nil {
 		return nil, txFailed(err, "change item userId:%d reason:%d", userId, reason)
 	}
-	s.NotifyChange(res)
 	return res, nil
 }
 
 // todo 所有道具扣减都是在事务中进行，后期需要考虑长事务问题或死锁问题
 func (s *ItemService) doUpdateItem(ctx context.Context, store *repository.TxStore, res *model.ItemChangeResult, ops *itemOps) (*model.ItemChangeResult, error) {
 	userId := res.UserId
-	if err := s.lockUser(ctx, store, userId); err != nil {
+	if err := lockUser(ctx, store, userId); err != nil {
 		return nil, err
 	}
 	now := time.Now().UnixMilli()
@@ -162,8 +166,8 @@ func (s *ItemService) newId() int64 {
 	return s.idNode.Generate().Int64()
 }
 
-// todo 暂时在用户身上加锁，串行化该玩家的道具变更
-func (s *ItemService) lockUser(ctx context.Context, store *repository.TxStore, userId int64) error {
+// todo 暂时在用户身上加锁，串行化该玩家的道具变更；可能会影响到其他
+func lockUser(ctx context.Context, store *repository.TxStore, userId int64) error {
 	exists, err := store.User.LockForUpdate(ctx, userId)
 	if err != nil {
 		return err
