@@ -7,6 +7,7 @@ import (
 	"gobattle/btsession"
 	"gobattle/game/protocol"
 	"gobattle/game/tpl"
+	"gobattle/game/util/timeutil"
 	"maps"
 	"net"
 	"slices"
@@ -86,7 +87,7 @@ func (s *MatchService) Join(session *btsession.Session, gameMode, mapId int) err
 		userId:     session.UserId(),
 		matchScore: defaultMatchScore,
 		poolKey:    matchPoolKey{gameMode: gameMode, mapId: mapId},
-		joinTime:   time.Now(),
+		joinTime:   timeutil.Now(),
 		session:    session,
 	}
 
@@ -132,7 +133,7 @@ func (s *MatchService) onDisconnect(session *btsession.Session) {
 
 // 按入池先后为每人挑分数最近的人，凑够开局；等待超时的有多少人就带多少人开局
 func (s *MatchService) matchTick() {
-	now := time.Now()
+	now := timeutil.Now()
 
 	s.mu.Lock()
 	var matchedGroups []*matchGroup

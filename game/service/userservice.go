@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"gobattle/btlog"
+	"gobattle/game/domain"
 	"gobattle/game/model"
 	"gobattle/game/repository"
+	"gobattle/game/util/timeutil"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -21,12 +23,7 @@ func NewUserService(db *repository.DB, idNode *snowflake.Node, queryTimeout time
 	return &UserService{db: db, idNode: idNode, queryTimeout: queryTimeout}
 }
 
-type LoginResult struct {
-	User    *model.User
-	Created bool
-}
-
-func (s *UserService) Login(ctx context.Context, username string) (*LoginResult, error) {
+func (s *UserService) Login(ctx context.Context, username string) (*domain.UserLogin, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
 	res, err := s.login(ctx, username)
@@ -40,20 +37,20 @@ func (s *UserService) Login(ctx context.Context, username string) (*LoginResult,
 	return res, nil
 }
 
-func (s *UserService) login(ctx context.Context, username string) (*LoginResult, error) {
-	return repository.Transact(ctx, s.db, func(ctx context.Context, store *repository.TxStore) (*LoginResult, error) {
-		now := time.Now().UnixMilli()
-		user, err := store.User.GetByUsernameForUpdate(ctx, username)
+func (s *UserService) login(ctx context.Context, username string) (*domain.UserLogin, error) {
+	return repository.Transact(ctx, s.db, func(ctx context.Context, store *repository.TxStore) (*domain.UserLogin, error) {
+		now := timeutil.Now().UnixMilli()
+		user, err := store.UserRepository.GetByUsernameForUpdate(ctx, username)
 		if err != nil {
 			return nil, err
 		}
 		if user == nil {
 			user = &model.User{UserId: s.idNode.Generate().Int64(), Username: username, RoleName: username, CreateTime: now, LastLoginTime: now, UpdateTime: now}
-			return &LoginResult{User: user, Created: true}, store.User.Insert(ctx, user)
+			return &domain.UserLogin{User: user, Created: true}, store.UserRepository.Insert(ctx, user)
 		}
 		user.LastLoginTime = now
 		user.UpdateTime = now
-		err = store.User.Update(ctx, user)
-		return &LoginResult{User: user}, err
+		err = store.UserRepository.Update(ctx, user)
+		return &domain.UserLogin{User: user}, err
 	})
 }

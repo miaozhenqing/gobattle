@@ -3,10 +3,10 @@ package repository
 import "github.com/jmoiron/sqlx"
 
 type TxStore struct {
-	User     *UserRepository
-	Resource *ResourceRepository
-	Weapon   *WeaponRepository
-	Shop     *ShopRepository
+	UserRepository     *UserRepository
+	ResourceRepository *ResourceRepository
+	WeaponRepository   *WeaponRepository
+	ShopRepository     *ShopRepository
 
 	rollback     bool
 	afterCommits []func()
@@ -14,9 +14,9 @@ type TxStore struct {
 
 func newTxStore(tx *sqlx.Tx) *TxStore {
 	return &TxStore{
-		User:     &UserRepository{tx: tx},
-		Resource: &ResourceRepository{tx: tx},
-		Weapon:   &WeaponRepository{tx: tx},
-		Shop:     &ShopRepository{tx: tx},
+		UserRepository:     &UserRepository{tx: tx},
+		ResourceRepository: &ResourceRepository{tx: tx},
+		WeaponRepository:   &WeaponRepository{tx: tx},
+		ShopRepository:     &ShopRepository{tx: tx},
 	}
 }

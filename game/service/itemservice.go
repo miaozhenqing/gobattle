@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"gobattle/btlog"
-	"gobattle/game/model"
+	"gobattle/game/domain"
 	"gobattle/game/protocol"
 	"gobattle/game/repository"
 	"gobattle/game/service/item"
 	"gobattle/game/tpl"
+	"gobattle/game/util/timeutil"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -26,7 +27,7 @@ type ItemService struct {
 
 func NewItemService(db *repository.DB, pushService *PushService, idNode *snowflake.Node, queryTimeout time.Duration, tplMgr *tpl.TplManager) *ItemService {
 
-	for _, def := range model.ItemCategoryDefs() {
+	for _, def := range domain.ItemCategoryDefs() {
 		_, hasStack := item.GetStackHandler(def.Category)
 		_, hasUnstack := item.GetUnstackHandler(def.Category)
 		if def.Stackable != hasStack || def.Stackable == hasUnstack {
@@ -37,19 +38,19 @@ func NewItemService(db *repository.DB, pushService *PushService, idNode *snowfla
 }
 
 // 仓库道具列表
-func (s *ItemService) List(ctx context.Context, userId int64) ([]*protocol.ItemInfo, error) {
+func (s *ItemService) List(ctx context.Context, userId int64) ([]*domain.Item, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
-	items, err := repository.Transact(ctx, s.db, func(ctx context.Context, store *repository.TxStore) ([]*protocol.ItemInfo, error) {
-		var items []*protocol.ItemInfo
+	items, err := repository.Transact(ctx, s.db, func(ctx context.Context, store *repository.TxStore) ([]*domain.Item, error) {
+		var items []*domain.Item
 		//todo 优化查询
-		for _, def := range model.ItemCategoryDefs() {
+		for _, def := range domain.ItemCategoryDefs() {
 			bases, err := item.GetHandler(def.Category).List(ctx, store, userId)
 			if err != nil {
 				return nil, err
 			}
 			for _, b := range bases {
-				items = append(items, newItemInfo(def.Category, b.Id, b.ItemId, b.Count))
+				items = append(items, &domain.Item{Category: def.Category, ItemBase: b})
 			}
 		}
 		return items, nil
@@ -60,31 +61,31 @@ func (s *ItemService) List(ctx context.Context, userId int64) ([]*protocol.ItemI
 	return items, nil
 }
 
-func newItemInfo(category model.ItemCategory, id int64, itemId int, count int64) *protocol.ItemInfo {
+func newItemInfo(category domain.ItemCategory, id int64, itemId int, count int64) *protocol.ItemInfo {
 	return &protocol.ItemInfo{Id: id, Category: int(category), ItemId: itemId, Count: count}
 }
 
-func (s *ItemService) Add(ctx context.Context, userId int64, adds []model.ItemChangeReq, reason int) (*model.ItemChangeResult, error) {
+func (s *ItemService) Add(ctx context.Context, userId int64, adds []domain.ItemAmount, reason int) (*domain.ItemChanges, error) {
 	return s.change(ctx, userId, nil, adds, reason)
 }
 
-func (s *ItemService) Decr(ctx context.Context, userId int64, costs []model.ItemChangeReq, reason int) (*model.ItemChangeResult, error) {
+func (s *ItemService) Decr(ctx context.Context, userId int64, costs []domain.ItemAmount, reason int) (*domain.ItemChanges, error) {
 	return s.change(ctx, userId, costs, nil, reason)
 }
 
 // 先扣后加,任一道具不足则全部不生效；在调用方事务内则加入，推送在提交后执行
-func (s *ItemService) change(ctx context.Context, userId int64, costs []model.ItemChangeReq, adds []model.ItemChangeReq, reason int) (*model.ItemChangeResult, error) {
+func (s *ItemService) change(ctx context.Context, userId int64, costs []domain.ItemAmount, adds []domain.ItemAmount, reason int) (*domain.ItemChanges, error) {
 	ops, err := s.mergeItemOps(costs, adds)
 	if err != nil {
 		return nil, err
 	}
-	res := &model.ItemChangeResult{UserId: userId, Reason: reason}
+	res := &domain.ItemChanges{UserId: userId, Reason: reason}
 	if ops.empty() {
 		return res, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
-	res, err = repository.Transact(ctx, s.db, func(ctx context.Context, store *repository.TxStore) (*model.ItemChangeResult, error) {
+	res, err = repository.Transact(ctx, s.db, func(ctx context.Context, store *repository.TxStore) (*domain.ItemChanges, error) {
 		res, err := s.doUpdateItem(ctx, store, res, ops)
 		if err != nil {
 			return nil, err
@@ -99,12 +100,12 @@ func (s *ItemService) change(ctx context.Context, userId int64, costs []model.It
 }
 
 // todo 所有道具扣减都是在事务中进行，后期需要考虑长事务问题或死锁问题
-func (s *ItemService) doUpdateItem(ctx context.Context, store *repository.TxStore, res *model.ItemChangeResult, ops *itemOps) (*model.ItemChangeResult, error) {
+func (s *ItemService) doUpdateItem(ctx context.Context, store *repository.TxStore, res *domain.ItemChanges, ops *itemOps) (*domain.ItemChanges, error) {
 	userId := res.UserId
 	if err := lockUser(ctx, store, userId); err != nil {
 		return nil, err
 	}
-	now := time.Now().UnixMilli()
+	now := timeutil.Now().UnixMilli()
 
 	// 不可堆叠扣减
 	for category, itemIdById := range ops.unstackCosts {
@@ -113,7 +114,7 @@ func (s *ItemService) doUpdateItem(ctx context.Context, store *repository.TxStor
 			return nil, err
 		}
 		for id, itemId := range itemIdById {
-			res.Changes = append(res.Changes, &model.ItemChange{ItemKey: model.ItemKey{Category: category, ItemId: itemId}, Id: id, Before: 1, After: 0})
+			res.Changes = append(res.Changes, &domain.ItemChange{ItemKey: domain.ItemKey{Category: category, ItemId: itemId}, Id: id, Before: 1, After: 0})
 		}
 	}
 
@@ -139,14 +140,14 @@ func (s *ItemService) doUpdateItem(ctx context.Context, store *repository.TxStor
 				return nil, err
 			}
 			for _, id := range ids {
-				res.Changes = append(res.Changes, &model.ItemChange{ItemKey: model.ItemKey{Category: category, ItemId: itemId}, Id: id, Before: 0, After: 1})
+				res.Changes = append(res.Changes, &domain.ItemChange{ItemKey: domain.ItemKey{Category: category, ItemId: itemId}, Id: id, Before: 0, After: 1})
 			}
 		}
 	}
 	return res, nil
 }
 
-func (s *ItemService) NotifyChange(res *model.ItemChangeResult) {
+func (s *ItemService) NotifyChange(res *domain.ItemChanges) {
 	if res == nil || len(res.Changes) == 0 {
 		return
 	}
@@ -168,7 +169,7 @@ func (s *ItemService) newId() int64 {
 
 // todo 暂时在用户身上加锁，串行化该玩家的道具变更；可能会影响到其他
 func lockUser(ctx context.Context, store *repository.TxStore, userId int64) error {
-	exists, err := store.User.LockForUpdate(ctx, userId)
+	exists, err := store.UserRepository.LockForUpdate(ctx, userId)
 	if err != nil {
 		return err
 	}
@@ -180,16 +181,16 @@ func lockUser(ctx context.Context, store *repository.TxStore, userId int64) erro
 
 // 校验并按类型分组后的增减请求
 type itemOps struct {
-	stackDeltas  map[model.ItemCategory]map[int]*item.StackDelta // 可堆叠：itemId → 增减量
-	unstackCosts map[model.ItemCategory]map[int64]int            // 不可堆叠扣减：id → itemId
-	unstackAdds  map[model.ItemCategory]map[int]int64            // 不可堆叠增加：itemId → 件数
+	stackDeltas  map[domain.ItemCategory]map[int]*item.StackDelta // 可堆叠：itemId → 增减量
+	unstackCosts map[domain.ItemCategory]map[int64]int            // 不可堆叠扣减：id → itemId
+	unstackAdds  map[domain.ItemCategory]map[int]int64            // 不可堆叠增加：itemId → 件数
 }
 
 func (o *itemOps) empty() bool {
 	return len(o.stackDeltas) == 0 && len(o.unstackCosts) == 0 && len(o.unstackAdds) == 0
 }
 
-func (o *itemOps) stackDelta(key model.ItemKey) *item.StackDelta {
+func (o *itemOps) stackDelta(key domain.ItemKey) *item.StackDelta {
 	deltaByItemId, ok := o.stackDeltas[key.Category]
 	if !ok {
 		deltaByItemId = make(map[int]*item.StackDelta)
@@ -203,11 +204,11 @@ func (o *itemOps) stackDelta(key model.ItemKey) *item.StackDelta {
 	return delta
 }
 
-func (s *ItemService) mergeItemOps(costs, adds []model.ItemChangeReq) (*itemOps, error) {
+func (s *ItemService) mergeItemOps(costs, adds []domain.ItemAmount) (*itemOps, error) {
 	ops := &itemOps{
-		stackDeltas:  make(map[model.ItemCategory]map[int]*item.StackDelta),
-		unstackCosts: make(map[model.ItemCategory]map[int64]int),
-		unstackAdds:  make(map[model.ItemCategory]map[int]int64),
+		stackDeltas:  make(map[domain.ItemCategory]map[int]*item.StackDelta),
+		unstackCosts: make(map[domain.ItemCategory]map[int64]int),
+		unstackAdds:  make(map[domain.ItemCategory]map[int]int64),
 	}
 	seenIds := make(map[int64]struct{}, len(costs))
 	for _, c := range costs {
@@ -255,10 +256,10 @@ func (s *ItemService) mergeItemOps(costs, adds []model.ItemChangeReq) (*itemOps,
 	return ops, nil
 }
 
-func (s *ItemService) getItemCategoryDef(key model.ItemKey) (*model.ItemCategoryDef, bool) {
+func (s *ItemService) getItemCategoryDef(key domain.ItemKey) (*domain.ItemCategoryDef, bool) {
 	itemTpl, ok := s.tplMgr.GetItemTpl(key.ItemId)
 	if !ok || itemTpl.Category != key.Category {
 		return nil, false
 	}
-	return model.GetItemCategoryDef(key.Category)
+	return domain.GetItemCategoryDef(key.Category)
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"gobattle/btlog"
 	"gobattle/game/protocol"
+	"gobattle/game/util/timeutil"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -57,7 +58,7 @@ func NewBattleService(dsService *DsService, pushService *PushService) *BattleSer
 		battleById:       make(map[int64]*Battle),
 		battleIdByUserId: make(map[int64]int64),
 	}
-	s.battleIdSeq.Store(time.Now().UnixMilli())
+	s.battleIdSeq.Store(timeutil.Now().UnixMilli())
 	s.tick = newTickLoop("battle", battleTickInterval, s.checkTimeout)
 	dsService.OnUnregister(s.onDsUnregister)
 	return s
@@ -90,7 +91,7 @@ func (s *BattleService) Create(gameMode, mapId int, players []*BattlePlayer) (*B
 		Ds:         ds,
 		Players:    players,
 		State:      battleStateWaiting,
-		CreateTime: time.Now().UnixMilli(),
+		CreateTime: timeutil.Now().UnixMilli(),
 	}
 	s.mu.Lock()
 	s.battleById[battle.Id] = battle
@@ -130,7 +131,7 @@ func (s *BattleService) Start(ds *Ds, battleId int64) (*Battle, error) {
 		return nil, protocol.CodeBattleStateError
 	}
 	battle.State = battleStateRunning
-	battle.StartTime = time.Now().UnixMilli()
+	battle.StartTime = timeutil.Now().UnixMilli()
 	s.mu.Unlock()
 
 	btlog.Ins().Info("battleStart", "battleId", battle.Id, "dsId", ds.Id, "waitMs", battle.StartTime-battle.CreateTime)
@@ -154,7 +155,7 @@ func (s *BattleService) End(ds *Ds, battleId int64, statistics map[int]int) (*Ba
 	s.dsService.ReleaseDs(ds)
 	// todo 结算落库
 	btlog.Ins().Info("battleEnd", "battleId", battle.Id, "dsId", ds.Id, "gameMode", battle.GameMode,
-		"durationMs", time.Now().UnixMilli()-battle.StartTime, "statistics", statistics)
+		"durationMs", timeutil.Now().UnixMilli()-battle.StartTime, "statistics", statistics)
 	s.pushBattleEnd(battle, protocol.BattleEndNormal)
 	return battle, nil
 }
@@ -199,7 +200,7 @@ type timeoutBattle struct {
 }
 
 func (s *BattleService) checkTimeout() {
-	now := time.Now().UnixMilli()
+	now := timeutil.Now().UnixMilli()
 
 	var timeoutBattles []timeoutBattle
 	s.mu.Lock()

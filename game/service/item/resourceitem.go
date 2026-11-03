@@ -2,6 +2,7 @@ package item
 
 import (
 	"context"
+	"gobattle/game/domain"
 	"gobattle/game/model"
 	"gobattle/game/protocol"
 	"gobattle/game/repository"
@@ -10,7 +11,7 @@ import (
 type ResourceItemHandler struct{}
 
 func (h *ResourceItemHandler) List(ctx context.Context, store *repository.TxStore, userId int64) ([]*model.ItemBase, error) {
-	resources, err := store.Resource.ListByUserId(ctx, userId)
+	resources, err := store.ResourceRepository.ListByUserId(ctx, userId)
 	if err != nil {
 		return nil, err
 	}
@@ -22,12 +23,12 @@ func (h *ResourceItemHandler) List(ctx context.Context, store *repository.TxStor
 }
 
 func (h *ResourceItemHandler) UpdateCount(ctx context.Context, store *repository.TxStore, userId int64, deltaByItemId map[int]*StackDelta,
-	newId func() int64, now int64) ([]*model.ItemChange, error) {
+	newId func() int64, now int64) ([]*domain.ItemChange, error) {
 	itemIds := make([]int, 0, len(deltaByItemId))
 	for itemId := range deltaByItemId {
 		itemIds = append(itemIds, itemId)
 	}
-	resources, err := store.Resource.ListByItemIds(ctx, userId, itemIds)
+	resources, err := store.ResourceRepository.ListByItemIds(ctx, userId, itemIds)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +38,7 @@ func (h *ResourceItemHandler) UpdateCount(ctx context.Context, store *repository
 	}
 
 	upserts := make([]*model.UserResource, 0, len(deltaByItemId))
-	changes := make([]*model.ItemChange, 0, len(deltaByItemId))
+	changes := make([]*domain.ItemChange, 0, len(deltaByItemId))
 	for itemId, delta := range deltaByItemId {
 		res, ok := resourceByItemId[itemId]
 		if !ok {
@@ -54,10 +55,10 @@ func (h *ResourceItemHandler) UpdateCount(ctx context.Context, store *repository
 		res.Count = after
 		res.UpdateTime = now
 		upserts = append(upserts, res)
-		changes = append(changes, &model.ItemChange{ItemKey: model.ItemKey{Category: model.ItemCategoryResource, ItemId: itemId},
+		changes = append(changes, &domain.ItemChange{ItemKey: domain.ItemKey{Category: domain.ItemCategoryResource, ItemId: itemId},
 			Id: res.Id, Before: before, After: after})
 	}
-	if err = store.Resource.Upsert(ctx, upserts); err != nil {
+	if err = store.ResourceRepository.Upsert(ctx, upserts); err != nil {
 		return nil, err
 	}
 	return changes, nil

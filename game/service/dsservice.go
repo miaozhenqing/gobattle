@@ -4,9 +4,9 @@ import (
 	"gobattle/btlog"
 	"gobattle/btnet"
 	"gobattle/game/protocol"
+	"gobattle/game/util/timeutil"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 const (
@@ -52,7 +52,7 @@ func (s *DsService) Register(conn *btnet.Connection, dsId int64, ip string, port
 		Id:           dsId,
 		IP:           ip,
 		Port:         port,
-		RegisterTime: time.Now().UnixMilli(),
+		RegisterTime: timeutil.Now().UnixMilli(),
 		Conn:         conn,
 	}
 	dsKey.Set(conn, ds)

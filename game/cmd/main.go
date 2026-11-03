@@ -56,6 +56,7 @@ func main() {
 	userService := service.NewUserService(db, idNode, config.DB.QueryTimeout)
 	pushService := service.NewPushService(gameRouterHandler, dsRouterHandler, sessionMgr)
 	itemService := service.NewItemService(db, pushService, idNode, config.DB.QueryTimeout, tplMgr)
+	shopService := service.NewShopService(db, tplMgr, itemService, idNode, config.DB.QueryTimeout)
 	dsService := service.NewDsService()
 	battleService := service.NewBattleService(dsService, pushService)
 	matchService := service.NewMatchService(battleService, pushService, sessionMgr, tplMgr)
@@ -65,7 +66,8 @@ func main() {
 	battleModule := module.NewBattleModule(matchService, battleService)
 	dsModule := module.NewDsModule(dsService)
 	itemModule := module.NewItemModule(itemService)
-	gameRouterHandler.RegisterModules(loginModule, battleModule, itemModule)
+	shopModule := module.NewShopModule(shopService)
+	gameRouterHandler.RegisterModules(loginModule, battleModule, itemModule, shopModule)
 	dsRouterHandler.RegisterModules(dsModule)
 	battleModule.RegisterDsRoutes(dsRouterHandler)
 

@@ -16,6 +16,7 @@ const (
 	MsgBattleQuery   uint32 = 1403
 	// ==================== 道具 ====================
 	MsgItemList uint32 = 1501
+	MsgShopBuy  uint32 = 1601
 	// ==================== 推送 ====================
 	PushKick         uint32 = 51002
 	PushMatchSuccess uint32 = 51003
@@ -173,4 +174,14 @@ type ItemChangeInfo struct {
 type ItemChangePush struct {
 	Reason  int               `json:"reason"`
 	Changes []*ItemChangeInfo `json:"changes"`
+}
+
+type ShopBuyReq struct {
+	ShopId int `json:"shopId"`
+}
+
+type ShopBuyResp struct {
+	ShopId      int   `json:"shopId"`
+	BuyCount    int   `json:"buyCount"`
+	LastBuyTime int64 `json:"lastBuyTime"`
 }
