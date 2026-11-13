@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"gobattle/btlog"
+	"gobattle/framework/btlog"
 	"gobattle/game/domain"
 	"gobattle/game/model"
 	"gobattle/game/repository"

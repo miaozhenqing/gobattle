@@ -1,11 +1,11 @@
 package module
 
 import (
-	"gobattle/btrouter"
-	"gobattle/btsession"
+	"gobattle/framework/btrouter"
+	"gobattle/framework/btsession"
 	"gobattle/game/domain"
-	"gobattle/game/protocol"
 	"gobattle/game/service"
+	"gobattle/shared/protocol"
 )
 
 type ItemModule struct {

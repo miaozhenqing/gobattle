@@ -1,2 +1,4 @@
 /.idea/
 /gobattle.iml
+/game/config/game.json
+/gateway/config/gateway.json

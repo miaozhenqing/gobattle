@@ -3,8 +3,8 @@ package item
 import (
 	"context"
 	"gobattle/game/model"
-	"gobattle/game/protocol"
 	"gobattle/game/repository"
+	"gobattle/shared/protocol"
 )
 
 type weaponItemHandler struct{}

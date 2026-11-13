@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"errors"
-	"gobattle/btsession"
+	"gobattle/framework/btsession"
 	"gobattle/game/domain"
 	"gobattle/game/model"
-	"gobattle/game/protocol"
 	"gobattle/game/repository"
 	"gobattle/game/tpl"
 	"gobattle/game/util/timeutil"
+	"gobattle/shared/protocol"
 	"time"
 
 	"github.com/bwmarrin/snowflake"

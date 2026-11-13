@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"gobattle/btlog"
+	"gobattle/framework/btlog"
 )
 
 type txKey struct{}

@@ -1,8 +1,8 @@
 package module
 
 import (
-	"gobattle/btlog"
-	"gobattle/btnet"
+	"gobattle/framework/btlog"
+	"gobattle/framework/btnet"
 	"gobattle/game/service"
 )
 

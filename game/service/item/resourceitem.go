@@ -4,8 +4,8 @@ import (
 	"context"
 	"gobattle/game/domain"
 	"gobattle/game/model"
-	"gobattle/game/protocol"
 	"gobattle/game/repository"
+	"gobattle/shared/protocol"
 )
 
 type ResourceItemHandler struct{}

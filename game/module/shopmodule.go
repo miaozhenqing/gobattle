@@ -1,10 +1,10 @@
 package module
 
 import (
-	"gobattle/btrouter"
-	"gobattle/btsession"
-	"gobattle/game/protocol"
+	"gobattle/framework/btrouter"
+	"gobattle/framework/btsession"
 	"gobattle/game/service"
+	"gobattle/shared/protocol"
 )
 
 type ShopModule struct {

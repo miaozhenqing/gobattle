@@ -1,0 +1,82 @@
+package main
+
+import (
+	"context"
+	"gobattle/framework/btconfig"
+	"gobattle/framework/btlog"
+	"gobattle/framework/btnet"
+	"gobattle/framework/btregistry"
+	"gobattle/framework/btrouter"
+	"gobattle/framework/btrpc"
+	"gobattle/framework/btsession"
+	"gobattle/gateway/config"
+	"gobattle/gateway/module"
+	"gobattle/gateway/service"
+	"gobattle/shared/api"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+)
+
+func main() {
+	config.Load()
+	cfg := config.Gateway
+
+	sessionMgr := btsession.NewManager()
+	router := btrouter.NewRouterHandler(btrouter.JSONCodec{})
+	router.AddInterceptor(
+		btrouter.RateLimit(20, 40),
+		btrouter.Auth(btsession.IsLoggedIn),
+		btrouter.SlowLog(50*time.Millisecond),
+	)
+	pushService := service.NewPushService(router, sessionMgr)
+
+	registry, err := btregistry.NewZkRegistry(cfg.Zk)
+	if err != nil {
+		panic(err)
+	}
+	//创建logic的集群信息
+	logicCluster, err := btrpc.NewCluster(btrpc.ClusterConfig{
+		GatewayId:     cfg.NodeId,
+		MaxPacketSize: cfg.RpcMaxPacketSize,
+		CallTimeout:   cfg.CallTimeout.Duration(),
+		Codec:         btrouter.JSONCodec{},
+		OnPush:        pushService.OnBackendPush,
+	}, registry, "logic", btrpc.RoundRobin())
+	if err != nil {
+		btlog.Ins().Error("newClusterError", "err", err)
+		panic(err)
+	}
+	//
+	router.RegisterModules(module.NewLoginModule(api.NewUserApiClient(logicCluster), pushService, sessionMgr))
+	gw := newGatewayServer(cfg.Server, router, sessionMgr)
+	if err := gw.Server.Start(); err != nil {
+		panic(err)
+	}
+	btlog.Ins().Info("gatewayStarted", "nodeId", cfg.NodeId, "port", cfg.Server.TcpPort)
+
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-sigCtx.Done()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	gw.Shutdown(ctx)
+	logicCluster.Close()
+	registry.Close()
+}
+
+func newGatewayServer(c btconfig.ServerConfig, router *btrouter.RouterHandler, sessionMgr *btsession.Manager) *btnet.ServerGroup {
+	boss := btnet.NewEventLoopGroup("gw-boss", 1)
+	worker := btnet.NewEventLoopGroup("gw-worker", c.IOLoops())
+	biz := btnet.NewEventLoopGroup("gw-biz", c.BizLoops())
+	s := btnet.NewServer(c.Options(), boss, worker)
+	sessionHandler := btsession.NewSessionHandler(sessionMgr)
+	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
+		p.AddLast(btrouter.NewEnvelopeCodec())
+		p.AddLastGroup(biz, sessionHandler)
+		p.AddLastGroup(biz, router)
+	})
+	return &btnet.ServerGroup{Name: "gateway", Server: s, Groups: []*btnet.EventLoopGroup{boss, worker, biz}}
+}

@@ -2,8 +2,8 @@ package service
 
 import (
 	"errors"
-	"gobattle/btrouter"
-	"gobattle/btsession"
+	"gobattle/framework/btrouter"
+	"gobattle/framework/btsession"
 )
 
 var errUserOffline = errors.New("user offline")
