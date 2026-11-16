@@ -1,8 +1,10 @@
 package btconfig
 
 import (
+	"bytes"
 	"encoding/json"
 	"gobattle/framework/btnet"
+	"os"
 	"runtime"
 	"time"
 )
@@ -22,6 +24,16 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	}
 	*d = Duration(v)
 	return nil
+}
+
+func LoadJSON(path string, v any) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	return dec.Decode(v)
 }
 
 type ServerConfig struct {

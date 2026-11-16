@@ -26,7 +26,9 @@ type UserApiClient struct {
 	inv btrpc.Invoker
 }
 
-func NewUserApiClient(inv btrpc.Invoker) *UserApiClient { return &UserApiClient{inv: inv} }
+func NewUserApiClient(inv btrpc.Invoker) *UserApiClient {
+	return &UserApiClient{inv: inv}
+}
 
 func (c *UserApiClient) Login(ctx context.Context, req *LoginReq) (*LoginResp, error) {
 	return btrpc.Invoke[LoginResp](ctx, c.inv, "UserApi.Login", req)

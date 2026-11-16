@@ -46,11 +46,6 @@ func dialNodeClient(node Node, gatewayId int64, maxFrameSize int, onPush func(*P
 		done:      make(chan struct{}),
 	}
 
-	// 向对端注册当前属于哪个服务id
-	err = c.writePacket(&Packet{
-		Type:      btnet.MessageHandshake,
-		GatewayId: gatewayId,
-	})
 	if err != nil {
 		return nil, err
 	}
@@ -73,12 +68,11 @@ func (c *Client) sendRequestAndWait(ctx context.Context, method string, payload 
 
 	m := GetRequestMeta(ctx)
 	p := &Packet{
-		Type:      btnet.MessageRequest,
-		Seq:       seq,
-		Method:    method,
-		UserId:    m.UserId,
-		GatewayId: c.gatewayId,
-		Payload:   payload,
+		Type:    btnet.MessageRequest,
+		Seq:     seq,
+		Method:  method,
+		UserId:  m.UserId,
+		Payload: payload,
 	}
 	//向对端写数据
 	if err := c.writePacket(p); err != nil {

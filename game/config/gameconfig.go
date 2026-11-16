@@ -1,7 +1,11 @@
 package config
 
 import (
+	_ "encoding/json"
+	"flag"
+	"fmt"
 	"gobattle/framework/btconfig"
+	_ "os"
 )
 
 var Game *GameConfig
@@ -32,7 +36,29 @@ type DBConfig struct {
 }
 
 func Load() {
-	panic("TODO: load game JSON config and apply flag overrides")
+	path := flag.String("config", "game/config/game.json", "config file")
+	nodeId := flag.Int64("nodeId", 0, "override nodeId")
+	port := flag.Int("port", 0, "override rpc.tcpPort")
+	advertiseHost := flag.String("advertiseHost", "", "override advertiseHost")
+	flag.Parse()
+
+	cfg := &GameConfig{TplDir: "game/tpl/json"}
+	if err := btconfig.LoadJSON(*path, cfg); err != nil {
+		panic(fmt.Sprintf("load config %s: %v", *path, err))
+	}
+	if *nodeId > 0 {
+		cfg.NodeId = *nodeId
+	}
+	if *port > 0 {
+		cfg.Rpc.TcpPort = *port
+	}
+	if *advertiseHost != "" {
+		cfg.AdvertiseHost = *advertiseHost
+	}
+	if cfg.NodeId <= 0 || cfg.Group == "" {
+		panic("nodeId and group are required")
+	}
+	Game = cfg
 }
 
 func (c *GameConfig) RpcAddr() string {

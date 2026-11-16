@@ -3,32 +3,64 @@ package btrpc
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"gobattle/framework/btnet"
 )
 
 type Packet struct {
-	Type      btnet.MessageType //1
-	Seq       uint32            //4
-	Code      uint32            //4
-	Method    string            //
-	UserId    int64             //8
-	GatewayId int64             //8
-	Payload   []byte
+	Type    btnet.MessageType //1
+	Seq     uint32            //4
+	Code    uint32            //4
+	UserId  int64             //8
+	Method  string            //2
+	Payload []byte
 }
 
 var ErrInvalidPacket = errors.New("invalid packet")
 
-const packetFixedSize = 1 + 4 + 4 + 2 + 8 + 8
+const packetFixedSize = 1 + 4 + 4 + 8 + 2
 
 var packetByteOrder = binary.BigEndian
 
 func encodePacket(p *Packet) []byte {
-	//todo
-	return nil
+	bodyLen := packetFixedSize + len(p.Method) + len(p.Payload)
+	buf := make([]byte, btnet.FrameHeaderSize+bodyLen)
+	//设置帧头
+	btnet.PutFrameHeader(buf, 0, bodyLen)
+	b := buf[btnet.FrameHeaderSize:]
+	b[0] = byte(p.Type)
+	packetByteOrder.PutUint32(b[1:5], p.Seq)
+	packetByteOrder.PutUint32(b[5:9], p.Code)
+	packetByteOrder.PutUint64(b[9:17], uint64(p.UserId))
+	packetByteOrder.PutUint16(b[17:19], uint16(len(p.Method)))
+	start := 19
+	//实际写入的字节数 i
+	i := copy(buf[start:], p.Method)
+	copy(buf[start+i:], p.Payload)
+	return buf
 }
 
 func decodePacket(body []byte) (*Packet, error) {
-	return nil, errors.New("TODO: decode RPC packet")
+	if len(body) < packetFixedSize {
+		return nil, fmt.Errorf("%w: len:%v", ErrInvalidPacket, len(body))
+	}
+	messageType := btnet.MessageType(body[0])
+	if messageType < btnet.MessageRequest || messageType > btnet.MessagePush {
+		return nil, fmt.Errorf("%w: typ:%v", ErrInvalidPacket, messageType)
+	}
+	methodLen := packetByteOrder.Uint16(body[17:19])
+	if len(body) < int(packetFixedSize+methodLen) {
+		return nil, fmt.Errorf("%w: typ:%v", ErrInvalidPacket, messageType)
+	}
+	off := 19 + methodLen
+	return &Packet{
+		Type:    messageType,
+		Seq:     packetByteOrder.Uint32(body[1:5]),
+		Code:    packetByteOrder.Uint32(body[5:9]),
+		UserId:  int64(packetByteOrder.Uint32(body[9:17])),
+		Method:  string(body[19:off]),
+		Payload: body[off:],
+	}, nil
 }
 
 var (
@@ -39,9 +71,22 @@ var (
 type PacketCodec struct{}
 
 func (PacketCodec) OnRead(ctx *btnet.HandlerContext, msg any) {
-	panic("TODO: decode RPC frame")
+	f, ok := msg.(*btnet.Frame)
+	if !ok {
+		ctx.FireRead(msg)
+	}
+	p, err := decodePacket(f.Body)
+	if err != nil {
+		ctx.FireException(err)
+		return
+	}
+	ctx.FireRead(p)
 }
 
 func (PacketCodec) OnWrite(ctx *btnet.HandlerContext, msg any) {
-	panic("TODO: encode RPC frame")
+	p, ok := msg.(*Packet)
+	if !ok {
+		ctx.FireWrite(msg)
+	}
+	ctx.FireWrite(encodePacket(p))
 }

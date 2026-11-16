@@ -1,9 +1,10 @@
 package config
 
 import (
-	"encoding/json"
+	"flag"
+	"fmt"
 	"gobattle/framework/btconfig"
-	"os"
+	"time"
 )
 
 var Gateway *GatewayConfig
@@ -17,15 +18,23 @@ type GatewayConfig struct {
 }
 
 func Load() {
-	//todo 先采用相对于可执行文件目录
-	file, err := os.ReadFile("gateway/config/gateway.json")
-	if err != nil {
-		panic(err)
+	path := flag.String("config", "gateway/config/gateway.json", "config file")
+	nodeId := flag.Int64("nodeId", 0, "override nodeId")
+	port := flag.Int("port", 0, "override server.tcpPort")
+	flag.Parse()
+
+	cfg := &GatewayConfig{CallTimeout: btconfig.Duration(3 * time.Second), RpcMaxPacketSize: 65536}
+	if err := btconfig.LoadJSON(*path, cfg); err != nil {
+		panic(fmt.Sprintf("load config %s: %v", *path, err))
 	}
-	var cfg GatewayConfig
-	err = json.Unmarshal(file, &cfg)
-	if err != nil {
-		panic(err)
+	if *nodeId > 0 {
+		cfg.NodeId = *nodeId
 	}
-	Gateway = &cfg
+	if *port > 0 {
+		cfg.Server.TcpPort = *port
+	}
+	if cfg.NodeId <= 0 {
+		panic("nodeId is required")
+	}
+	Gateway = cfg
 }
