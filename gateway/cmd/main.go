@@ -38,7 +38,10 @@ func main() {
 	}
 	//创建logic的集群信息
 	logicCluster, err := btrpc.NewCluster(btrpc.ClusterConfig{
-		GatewayId:     cfg.NodeId,
+		Register: func(ctx context.Context, inv btrpc.Invoker) error {
+			_, err := api.NewPeerApiClient(inv).Register(ctx, &api.RegisterPeerReq{PeerType: "gateway", PeerId: cfg.NodeId})
+			return err
+		},
 		MaxPacketSize: cfg.RpcMaxPacketSize,
 		CallTimeout:   cfg.CallTimeout.Duration(),
 		Codec:         btrouter.JSONCodec{},

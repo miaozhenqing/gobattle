@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gobattle/framework/btconfig"
 	_ "os"
+	"strconv"
 )
 
 var Game *GameConfig
@@ -62,5 +63,9 @@ func Load() {
 }
 
 func (c *GameConfig) RpcAddr() string {
-	panic("TODO: choose advertised RPC host and port")
+	host := c.AdvertiseHost
+	if host == "" {
+		host = c.Rpc.Host
+	}
+	return host + ":" + strconv.Itoa(c.Rpc.TcpPort)
 }

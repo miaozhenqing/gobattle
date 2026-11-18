@@ -39,6 +39,7 @@ func main() {
 
 	userService := service.NewUserService(db, idNode, cfg.DB.QueryTimeout.Duration())
 	rpcServer := btrpc.NewServer(cfg.Rpc, btrouter.JSONCodec{})
+	btrpc.RegisterBeforeBind[api.PeerApi](rpcServer, module.NewPeerApiModule(rpcServer), "Register")
 	btrpc.Register[api.UserApi](rpcServer, module.NewUserApiModule(userService))
 	if err := rpcServer.Start(); err != nil {
 		panic(err)

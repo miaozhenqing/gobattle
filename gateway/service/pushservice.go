@@ -17,7 +17,7 @@ func NewPushService(router *btrouter.RouterHandler, sessionMgr *btsession.Manage
 }
 
 func (s *PushService) OnBackendPush(p *btrpc.Packet) {
-	msgId := p.Code
+	msgId := p.MsgId
 	if p.UserId == 0 {
 		s.sessionMgr.Range(func(sess *btsession.Session) {
 			_ = s.router.PushRaw(sess.Conn(), msgId, p.Payload)

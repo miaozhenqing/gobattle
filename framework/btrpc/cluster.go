@@ -3,6 +3,7 @@ package btrpc
 import (
 	"cmp"
 	"context"
+	"gobattle/framework/btlog"
 	"gobattle/framework/btrouter"
 	"slices"
 	"sync"
@@ -37,7 +38,7 @@ type Discovery interface {
 }
 
 type ClusterConfig struct {
-	GatewayId     int64
+	Register      func(ctx context.Context, inv Invoker) error
 	MaxPacketSize int
 	CallTimeout   time.Duration
 	Codec         btrouter.Codec
@@ -58,6 +59,9 @@ type Cluster struct {
 func NewCluster(cfg ClusterConfig, d Discovery, group string, b Balancer) (*Cluster, error) {
 	c := &Cluster{cfg: cfg, group: group, balancer: b,
 		clients: map[int64]*Client{}, nodes: map[int64]Node{}}
+	if c.cfg.Codec == nil {
+		c.cfg.Codec = btrouter.JSONCodec{}
+	}
 	if err := d.Watch(group, c.syncDiscoveredNodes); err != nil {
 		return nil, err
 	}
@@ -106,20 +110,33 @@ func (c *Cluster) syncDiscoveredNodes(nodes []Node) {
 }
 
 func (c *Cluster) connectNode(n Node) {
-	client, err := dialNodeClient(n, c.cfg.GatewayId, c.cfg.MaxPacketSize, c.cfg.OnPush)
+	client, err := dialNodeClient(n, c.cfg.MaxPacketSize, c.cfg.Codec, c.cfg.OnPush)
 	if err != nil {
+		btlog.Ins().Error("rpcClusterDialFail", "group", c.group, "node", n.NodeId, "addr", n.Addr, "err", err)
 		return
+	}
+	if c.cfg.Register != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		err = c.cfg.Register(ctx, client)
+		cancel()
+		if err != nil {
+			btlog.Ins().Error("rpcClusterRegisterFail", "group", c.group, "node", n.NodeId, "addr", n.Addr, "err", err)
+			_ = client.Close()
+			return
+		}
 	}
 	c.mu.Lock()
 	wanted, exists := c.nodes[n.NodeId]
 	//确认下地址没变
 	if c.closed || !exists || wanted.Addr != n.Addr || c.clients[n.NodeId] != nil {
 		c.mu.Unlock()
+		btlog.Ins().Warn("rpcClusterDiscardStale", "group", c.group, "node", n.NodeId, "addr", n.Addr)
 		_ = client.Close()
 		return
 	}
 	c.clients[n.NodeId] = client
 	c.mu.Unlock()
+	btlog.Ins().Info("rpcClusterNodeConnected", "group", c.group, "node", n.NodeId, "addr", n.Addr)
 	c.refreshBalancer()
 	go func() {
 		<-client.Done()
@@ -146,7 +163,7 @@ func (c *Cluster) refreshBalancer() {
 }
 
 func (c *Cluster) getNodeClient(nodeId int64) (*Client, bool) {
-	c.mu.Unlock()
+	c.mu.Lock()
 	defer c.mu.Unlock()
 	client, ok := c.clients[nodeId]
 	return client, ok
@@ -162,7 +179,7 @@ func (c *Cluster) hasClosed() bool {
 func (c *Cluster) Codec() btrouter.Codec { return c.cfg.Codec }
 
 func (c *Cluster) Invoke(ctx context.Context, method string, payload []byte) ([]byte, error) {
-	if c.closed {
+	if c.hasClosed() {
 		return nil, btrouter.CodeUnavailable
 	}
 
@@ -176,7 +193,7 @@ func (c *Cluster) Invoke(ctx context.Context, method string, payload []byte) ([]
 	if !ok {
 		return nil, btrouter.CodeUnavailable
 	}
-	client, ok := c.clients[node.NodeId]
+	client, ok := c.getNodeClient(node.NodeId)
 	if !ok || node.Addr != client.node.Addr {
 		return nil, btrouter.CodeUnavailable
 	}

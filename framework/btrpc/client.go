@@ -2,7 +2,6 @@ package btrpc
 
 import (
 	"context"
-	"errors"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btnet"
 	"gobattle/framework/btrouter"
@@ -15,11 +14,11 @@ import (
 const clientReadBufSize = 64 * 1024
 
 type Client struct {
-	node      Node
-	gatewayId int64
-	conn      net.Conn
-	decoder   *btnet.FrameDecoder
-	onPush    func(p *Packet)
+	node    Node
+	conn    net.Conn
+	decoder *btnet.FrameDecoder
+	codec   btrouter.Codec
+	onPush  func(p *Packet)
 
 	seq     atomic.Uint32
 	writeMu sync.Mutex
@@ -31,27 +30,29 @@ type Client struct {
 	done      chan struct{}
 }
 
-func dialNodeClient(node Node, gatewayId int64, maxFrameSize int, onPush func(*Packet)) (*Client, error) {
+func dialNodeClient(node Node, maxFrameSize int, codec btrouter.Codec, onPush func(*Packet)) (*Client, error) {
 	conn, err := net.DialTimeout("tcp", node.Addr, 3*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	c := &Client{
-		node:      node,
-		gatewayId: gatewayId,
-		conn:      conn,
-		onPush:    onPush,
-		decoder:   btnet.NewFrameDecoder(maxFrameSize, clientReadBufSize),
-		pending:   make(map[uint32]chan *Packet),
-		done:      make(chan struct{}),
-	}
-
-	if err != nil {
-		return nil, err
+		node:    node,
+		conn:    conn,
+		codec:   codec,
+		onPush:  onPush,
+		decoder: btnet.NewFrameDecoder(maxFrameSize, clientReadBufSize),
+		pending: make(map[uint32]chan *Packet),
+		done:    make(chan struct{}),
 	}
 	go c.readPackets()
 	return c, nil
 }
+
+func (c *Client) Invoke(ctx context.Context, method string, payload []byte) ([]byte, error) {
+	return c.sendRequestAndWait(ctx, method, payload)
+}
+
+func (c *Client) Codec() btrouter.Codec { return c.codec }
 
 func (c *Client) sendRequestAndWait(ctx context.Context, method string, payload []byte) ([]byte, error) {
 	seq := c.nextRequestSeq()
@@ -82,7 +83,7 @@ func (c *Client) sendRequestAndWait(ctx context.Context, method string, payload 
 	select {
 	//阻塞等待对端回包（readPackets）
 	case resp := <-ch:
-		if code := btrouter.Code(resp.Code); !errors.Is(code, btrouter.CodeOK) {
+		if code := btrouter.Code(resp.Code); code != btrouter.CodeOK {
 			return nil, code
 		}
 		return resp.Payload, nil
@@ -115,14 +116,15 @@ func (c *Client) writePacket(p *Packet) error {
 }
 
 func (c *Client) readPackets() {
+	defer c.Close()
 	buf := make([]byte, clientReadBufSize)
 	for {
-		_, err := c.conn.Read(buf)
+		n, err := c.conn.Read(buf)
 		if err != nil {
 			btlog.Ins().Error("rpcClientReadError", "node", c.node.NodeId, "addr", c.node.Addr, "err", err)
 			return
 		}
-		frames, err := c.decoder.Decode(buf)
+		frames, err := c.decoder.Decode(buf[:n])
 		if err != nil {
 			btlog.Ins().Error("rpcClientDecodeError", "node", c.node.NodeId, "addr", c.node.Addr, "err", err)
 			return

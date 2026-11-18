@@ -6,8 +6,9 @@ import (
 )
 
 type RequestMeta struct {
-	UserId    int64
-	GatewayId int64
+	UserId   int64
+	PeerType string
+	PeerId   int64
 }
 
 type requestMetaKey struct{}
