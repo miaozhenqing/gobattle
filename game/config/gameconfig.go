@@ -37,7 +37,7 @@ type DBConfig struct {
 }
 
 func Load() {
-	path := flag.String("config", "game/config/game.json", "config file")
+	path := flag.String("config", "game/game.json", "config file")
 	nodeId := flag.Int64("nodeId", 0, "override nodeId")
 	port := flag.Int("port", 0, "override rpc.tcpPort")
 	advertiseHost := flag.String("advertiseHost", "", "override advertiseHost")

@@ -14,10 +14,17 @@ type Logger interface {
 	With(args ...any) Logger
 }
 
-var ins Logger = &slogLogger{
-	logger: slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})),
+// TextHandler（本地调试）
+const textFormat = true
+
+var ins Logger = &slogLogger{logger: slog.New(newHandler())}
+
+func newHandler() slog.Handler {
+	opts := &slog.HandlerOptions{Level: slog.LevelDebug}
+	if textFormat {
+		return slog.NewTextHandler(os.Stdout, opts)
+	}
+	return slog.NewJSONHandler(os.Stdout, opts)
 }
 
 func Ins() Logger {

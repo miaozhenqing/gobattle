@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -129,10 +130,12 @@ func (s *Server) OnRead(ctx *btnet.HandlerContext, msg any) {
 	}
 	m := s.methods[p.Method]
 	if m == nil {
+		btlog.Ins().Warn("rpcMethodNotFound", "connId", conn.GetId(), "rpcMethod", p.Method, "seq", p.Seq)
 		s.sendResponse(conn, p, nil, btrouter.CodeUnimplemented)
 		return
 	}
 	if _, bound := peerKey.Get(conn); !bound && !m.allowUnbound {
+		btlog.Ins().Warn("rpcPeerNotBound", "connId", conn.GetId(), "rpcMethod", p.Method, "seq", p.Seq)
 		s.sendResponse(conn, p, nil, btrouter.CodeUnauthenticated)
 		return
 	}
@@ -159,31 +162,37 @@ func (s *Server) OnInactive(ctx *btnet.HandlerContext) {
 		}
 		s.mu.Unlock()
 	}
+	btlog.Ins().Info("rpcConnInactive", "connId", conn.GetId(), "peerType", peer.Type, "peerId", peer.Id)
 	ctx.FireInactive()
 }
 
 func (s *Server) BindPeer(ctx context.Context, peer Peer) error {
 	conn, _ := ctx.Value(rpcConnectionKey{}).(*btnet.Connection)
 	if conn == nil || peer.Type == "" || peer.Id <= 0 {
+		btlog.Ins().Warn("rpcBindPeerInvalid", "peerType", peer.Type, "peerId", peer.Id)
 		return btrouter.CodeInvalidArgument
 	}
 	s.mu.Lock()
-	if _, bound := peerKey.Get(conn); bound {
+	if bound, ok := peerKey.Get(conn); ok {
 		s.mu.Unlock()
+		btlog.Ins().Warn("rpcBindPeerAlreadyBound", "connId", conn.GetId(), "peerType", peer.Type, "peerId", peer.Id,
+			"boundPeerType", bound.Type, "boundPeerId", bound.Id)
 		return btrouter.CodeInvalidArgument
 	}
 	old := s.peers[peer]
 	s.peers[peer] = conn
 	peerKey.Set(conn, peer)
 	s.mu.Unlock()
+	btlog.Ins().Info("rpcPeerBound", "connId", conn.GetId(), "peerType", peer.Type, "peerId", peer.Id)
 	if old != nil && old != conn {
+		btlog.Ins().Warn("rpcPeerReplaced", "peerType", peer.Type, "peerId", peer.Id, "oldConnId", old.GetId(), "newConnId", conn.GetId())
 		old.Stop()
 	}
 	return nil
 }
 
 func (s *Server) getPeerConnection(peer Peer) (*btnet.Connection, bool) {
-	s.mu.RUnlock()
+	s.mu.RLock()
 	defer s.mu.RUnlock()
 	conn, ok := s.peers[peer]
 	return conn, ok
@@ -197,7 +206,11 @@ func (s *Server) dispatchRequest(conn *btnet.Connection, p *Packet, m *method) {
 		PeerId:   peer.Id,
 	})
 	ctx = context.WithValue(ctx, rpcConnectionKey{}, conn)
+	startAt := time.Now()
 	resp, err := s.callMethod(ctx, m, p.Payload)
+	btlog.Ins().Debug("rpcRequest", "connId", conn.GetId(), "rpcMethod", m.name, "seq", p.Seq, "userId", p.UserId,
+		"peerType", peer.Type, "peerId", peer.Id, "req", string(p.Payload), "resp", resp, "err", err,
+		"durationMs", time.Since(startAt).Milliseconds())
 	s.sendResponse(conn, p, resp, err)
 }
 
@@ -233,7 +246,7 @@ func (s *Server) sendResponse(conn *btnet.Connection, req *Packet, resp any, err
 		return
 	}
 	out := &Packet{Type: btnet.MessageResponse, Seq: req.Seq, Code: uint32(code)}
-	if errors.Is(err, btrouter.CodeOK) && resp != nil {
+	if code == btrouter.CodeOK && resp != nil {
 		b, err := s.codec.Marshal(resp)
 		if err != nil {
 			btlog.Ins().Error("rpcMarshalRespError", "rpcMethod", req.Method, "err", err)
@@ -271,12 +284,14 @@ func (s *Server) PushCtx(ctx context.Context, msgId uint32, v any) error {
 func (s *Server) Push(peer Peer, userId int64, msgId uint32, v any) error {
 	conn, ok := s.getPeerConnection(peer)
 	if !ok {
+		btlog.Ins().Warn("rpcPushPeerNotFound", "peerType", peer.Type, "peerId", peer.Id, "userId", userId, "msgId", msgId)
 		return btrouter.CodeUnavailable
 	}
 	data, err := s.codec.Marshal(v)
 	if err != nil {
 		return err
 	}
+	btlog.Ins().Debug("rpcPush", "connId", conn.GetId(), "peerType", peer.Type, "peerId", peer.Id, "userId", userId, "msgId", msgId, "data", v)
 	return conn.Write(&Packet{Type: btnet.MessagePush, MsgId: msgId, UserId: userId, Payload: data})
 }
 
@@ -295,6 +310,7 @@ func (s *Server) Broadcast(peerType string, msgId uint32, v any) error {
 		}
 	}
 	s.mu.RUnlock()
+	btlog.Ins().Debug("rpcBroadcast", "peerType", peerType, "conns", len(conns), "msgId", msgId, "data", v)
 	for _, c := range conns {
 		c.Write(frame)
 	}

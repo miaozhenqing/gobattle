@@ -34,6 +34,7 @@ func (l *rateLimit) Before(ctx *RequestContext, req any) error {
 		l.key.Set(ctx.conn, lim)
 	}
 	if !lim.Allow() {
+		btlog.Ins().Warn("rateLimited", "connId", ctx.conn.GetId(), "msgId", ctx.msgId, "method", ctx.Method())
 		return CodeResourceExhausted
 	}
 	return nil
@@ -57,6 +58,7 @@ func (a *auth) Before(ctx *RequestContext, req any) error {
 		return nil
 	}
 	if !a.authed(ctx) {
+		btlog.Ins().Warn("unauthenticated", "connId", ctx.conn.GetId(), "msgId", ctx.msgId, "method", ctx.Method())
 		return CodeUnauthenticated
 	}
 	return nil

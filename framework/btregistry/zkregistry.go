@@ -40,6 +40,7 @@ func NewZkRegistry(cfg btconfig.ZkConfig) (*ZkRegistry, error) {
 		nodeData: make(map[string][]byte),
 		closed:   make(chan struct{}),
 	}
+	btlog.Ins().Info("zkConnect", "addrs", cfg.Addrs, "root", cfg.Root, "sessionTimeout", cfg.SessionTimeout.Duration().String())
 	go zr.watchSessionEvents(events)
 	return zr, nil
 }
@@ -71,6 +72,7 @@ func (r *ZkRegistry) createEphemeralNode(p string, data []byte) error {
 	_, err := r.conn.Create(p, data, zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 	//可能有上次还未过期的节点，这里删了重建
 	if errors.Is(err, zk.ErrNodeExists) {
+		btlog.Ins().Warn("zkNodeExistsRecreate", "path", p)
 		r.conn.Delete(p, -1)
 		_, err = r.conn.Create(p, data, zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 	}
@@ -102,7 +104,9 @@ func (r *ZkRegistry) Deregister() {
 		err := r.conn.Delete(p, -1)
 		if err != nil && !errors.Is(err, zk.ErrNoNode) {
 			btlog.Ins().Error("zkDeregisterError", "path", p, "err", err)
+			continue
 		}
+		btlog.Ins().Info("zkDeregistered", "path", p)
 	}
 }
 
@@ -116,6 +120,9 @@ func (r *ZkRegistry) watchSessionEvents(events <-chan zk.Event) {
 		case e, ok := <-events:
 			if !ok {
 				return
+			}
+			if e.Type == zk.EventSession {
+				btlog.Ins().Info("zkSessionEvent", "state", e.State.String(), "server", e.Server, "sessionId", r.conn.SessionID())
 			}
 			switch e.State {
 			case zk.StateExpired:
@@ -138,7 +145,9 @@ func (r *ZkRegistry) restoreRegisteredNodes() {
 	for p, data := range owned {
 		if err := r.createEphemeralNode(p, data); err != nil {
 			btlog.Ins().Error("zkReRegisterError", "path", p, "err", err)
+			continue
 		}
+		btlog.Ins().Info("zkReRegistered", "path", p)
 	}
 }
 
@@ -152,6 +161,7 @@ func (r *ZkRegistry) Watch(group string, fn func([]btrpc.Node)) error {
 	if err != nil {
 		return err
 	}
+	btlog.Ins().Info("zkWatch", "group", group, "path", dir, "children", children)
 	//首次直接返回子节点信息
 	fn(r.readGroupNodes(dir, children))
 	//再启动一个监听，直到受到关闭信号
@@ -177,6 +187,7 @@ func (r *ZkRegistry) Watch(group string, fn func([]btrpc.Node)) error {
 					return
 				}
 			}
+			btlog.Ins().Info("zkChildrenChanged", "group", group, "path", dir, "children", children)
 			fn(r.readGroupNodes(dir, children))
 		}
 	}()
@@ -188,6 +199,7 @@ func (r *ZkRegistry) readGroupNodes(dir string, children []string) []btrpc.Node 
 	for _, name := range children {
 		data, _, err := r.conn.Get(path.Join(dir, name))
 		if err != nil {
+			btlog.Ins().Warn("zkGetNodeError", "path", path.Join(dir, name), "err", err)
 			continue
 		}
 		var n btrpc.Node
@@ -203,6 +215,7 @@ func (r *ZkRegistry) readGroupNodes(dir string, children []string) []btrpc.Node 
 
 func (r *ZkRegistry) Close() {
 	r.once.Do(func() {
+		btlog.Ins().Info("zkClose")
 		close(r.closed)
 		r.conn.Close()
 	})

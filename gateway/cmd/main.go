@@ -57,17 +57,20 @@ func main() {
 	if err := gw.Server.Start(); err != nil {
 		panic(err)
 	}
-	btlog.Ins().Info("gatewayStarted", "nodeId", cfg.NodeId, "port", cfg.Server.TcpPort)
+	btlog.Ins().Info("gatewayStarted", "nodeId", cfg.NodeId, "port", cfg.Server.TcpPort,
+		"callTimeout", cfg.CallTimeout.Duration().String(), "rpcMaxPacketSize", cfg.RpcMaxPacketSize)
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-sigCtx.Done()
+	btlog.Ins().Info("gatewayStopping", "nodeId", cfg.NodeId)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	gw.Shutdown(ctx)
 	logicCluster.Close()
 	registry.Close()
+	btlog.Ins().Info("gatewayStopped", "nodeId", cfg.NodeId)
 }
 
 func newGatewayServer(c btconfig.ServerConfig, router *btrouter.RouterHandler, sessionMgr *btsession.Manager) *btnet.ServerGroup {

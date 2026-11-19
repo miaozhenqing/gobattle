@@ -55,6 +55,8 @@ func (s *Server) Start() error {
 		return err
 	}
 	s.listener = listener
+	btlog.Ins().Info("serverListening", "server", s.opts.Name, "addr", listener.Addr().String(), "maxConn", s.opts.MaxConn,
+		"maxPacketSize", s.opts.MaxPacketSize, "idleTimeout", s.opts.IdleTimeout.String(), "writeTimeout", s.opts.WriteTimeout.String())
 	s.bossGroup.Next(0).Execute(s.acceptLoop)
 	return nil
 }
@@ -70,7 +72,7 @@ func (s *Server) acceptLoop() {
 		if s.connMgr.Len() >= s.opts.MaxConn {
 			//todo 先暴力sleep
 			time.Sleep(1000 * time.Millisecond)
-			btlog.Ins().Warn("overMaxConn", "maxConn", s.opts.MaxConn)
+			btlog.Ins().Warn("overMaxConn", "server", s.opts.Name, "maxConn", s.opts.MaxConn)
 			continue
 		}
 
@@ -78,7 +80,7 @@ func (s *Server) acceptLoop() {
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				//被关闭，永久退出
-				btlog.Ins().Info("listenerClosed", "err", err)
+				btlog.Ins().Info("listenerClosed", "server", s.opts.Name, "err", err)
 				return
 			}
 
@@ -88,7 +90,7 @@ func (s *Server) acceptLoop() {
 			} else if delay *= 2; delay > maxAcceptDelay {
 				delay = maxAcceptDelay
 			}
-			btlog.Ins().Error("acceptError", "err", err, "retryMs", delay.Milliseconds())
+			btlog.Ins().Error("acceptError", "server", s.opts.Name, "err", err, "retryMs", delay.Milliseconds())
 			time.Sleep(delay)
 			continue
 		}
@@ -99,17 +101,19 @@ func (s *Server) acceptLoop() {
 		loop.Execute(func() {
 			connection, err2 := NewConnection(connId, tcp, &s.opts, loop, s.connMgr, s.initializer)
 			if err2 != nil {
-				btlog.Ins().Error("newConnectionError", "connId", connId, "remote", tcp.RemoteAddr().String(), "err", err2)
+				btlog.Ins().Error("newConnectionError", "server", s.opts.Name, "connId", connId, "remote", tcp.RemoteAddr().String(), "err", err2)
 				tcp.Close()
 				return
 			}
 			connection.onInactiveDone = s.connMgr.done
 
 			if !s.connMgr.Add(connection) {
-				btlog.Ins().Info("serverClosingRejectConn", "connId", connId)
+				btlog.Ins().Info("serverClosingRejectConn", "server", s.opts.Name, "connId", connId)
 				tcp.Close()
 				return
 			}
+			btlog.Ins().Info("connAccepted", "server", s.opts.Name, "connId", connId, "remote", tcp.RemoteAddr().String(),
+				"conns", s.connMgr.Len())
 			connection.Start()
 		})
 	}
@@ -134,6 +138,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.closeListener()
 	s.connMgr.markClosed()
 	conns := s.connMgr.snapshot()
+	btlog.Ins().Info("serverShutdown", "server", s.opts.Name, "conns", len(conns))
 	for _, c := range conns {
 		c.FlushAndStop()
 	}
@@ -144,10 +149,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}()
 	select {
 	case <-done:
+		btlog.Ins().Info("serverShutdownDone", "server", s.opts.Name)
 		return nil
 	case <-ctx.Done():
 		// 超时强停
-		btlog.Ins().Error("shutdownTimeoutForceStop", "conns", len(conns))
+		btlog.Ins().Error("shutdownTimeoutForceStop", "server", s.opts.Name, "conns", len(conns))
 		for _, c := range conns {
 			c.Stop()
 		}

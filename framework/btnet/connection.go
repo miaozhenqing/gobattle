@@ -3,6 +3,7 @@ package btnet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"gobattle/framework/btlog"
 	"io"
 	"net"
@@ -86,6 +87,7 @@ func (c *Connection) Start() {
 
 func (c *Connection) Stop() {
 	c.stopOnce.Do(func() {
+		btlog.Ins().Info("connStop", "connId", c.GetId(), "remote", c.conn.RemoteAddr().String())
 		c.state.Store(connClosed)
 		c.cancelFunc()
 		c.destroy()
@@ -95,6 +97,7 @@ func (c *Connection) Stop() {
 
 func (c *Connection) FlushAndStop() {
 	if c.state.CompareAndSwap(connActive, connClosing) {
+		btlog.Ins().Info("connFlushAndStop", "connId", c.GetId(), "pending", len(c.msgChan))
 		c.ioLoop.Execute(func() {
 			close(c.flushChan)
 		})
@@ -111,6 +114,7 @@ func (c *Connection) destroy() {
 
 func (c *Connection) Write(msg any) error {
 	if c.IsClosed() {
+		btlog.Ins().Debug("writeOnClosedConn", "connId", c.GetId(), "type", fmt.Sprintf("%T", msg))
 		return ErrConnClosed
 	}
 	c.pipeline.FireWrite(msg)
@@ -126,7 +130,7 @@ func (c *Connection) writeRaw(data []byte) {
 	case c.msgChan <- data:
 	case <-c.cancelCtx.Done():
 	default:
-		btlog.Ins().Error("sendQueueFull", "connId", c.GetId())
+		btlog.Ins().Error("sendQueueFull", "connId", c.GetId(), "queueSize", cap(c.msgChan))
 		c.Stop()
 	}
 }

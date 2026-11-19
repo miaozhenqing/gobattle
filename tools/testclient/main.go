@@ -18,7 +18,7 @@ func main() {
 	defer client.Close()
 	loginResp, err := call[protocol.LoginResp](client, protocol.MsgLogin, &protocol.LoginReq{Username: *username})
 	if err != nil {
-		btlog.Ins().Error("clientLoginError", "err", err)
+		btlog.Ins().Error("MsgLogin", "err", err)
 		return
 	}
 
@@ -55,7 +55,7 @@ func onPush(msgId uint32, data []byte) {
 }
 
 func call[Resp any](client *btrouter.Client, msgId uint32, req any) (*Resp, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour) //方便测试debug
 	defer cancel()
 	return btrouter.Call[Resp](ctx, client, msgId, req)
 }

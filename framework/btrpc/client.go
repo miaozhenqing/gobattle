@@ -75,21 +75,30 @@ func (c *Client) sendRequestAndWait(ctx context.Context, method string, payload 
 		UserId:  m.UserId,
 		Payload: payload,
 	}
+	startAt := time.Now()
 	//向对端写数据
 	if err := c.writePacket(p); err != nil {
+		btlog.Ins().Error("rpcClientWriteError", "nodeId", c.node.NodeId, "addr", c.node.Addr, "rpcMethod", method, "seq", seq,
+			"userId", m.UserId, "err", err)
 		return nil, btrouter.CodeUnavailable
 	}
 
 	select {
 	//阻塞等待对端回包（readPackets）
 	case resp := <-ch:
+		btlog.Ins().Debug("rpcCall", "nodeId", c.node.NodeId, "rpcMethod", method, "seq", seq, "userId", m.UserId,
+			"code", resp.Code, "req", string(payload), "resp", string(resp.Payload), "durationMs", time.Since(startAt).Milliseconds())
 		if code := btrouter.Code(resp.Code); code != btrouter.CodeOK {
 			return nil, code
 		}
 		return resp.Payload, nil
 	case <-ctx.Done():
+		btlog.Ins().Warn("rpcCallCtxDone", "nodeId", c.node.NodeId, "addr", c.node.Addr, "rpcMethod", method, "seq", seq,
+			"userId", m.UserId, "err", ctx.Err(), "durationMs", time.Since(startAt).Milliseconds())
 		return nil, btrouter.CodeDeadlineExceeded
 	case <-c.done:
+		btlog.Ins().Warn("rpcCallClientClosed", "nodeId", c.node.NodeId, "addr", c.node.Addr, "rpcMethod", method, "seq", seq,
+			"userId", m.UserId, "durationMs", time.Since(startAt).Milliseconds())
 		return nil, btrouter.CodeUnavailable
 	}
 }
@@ -121,18 +130,23 @@ func (c *Client) readPackets() {
 	for {
 		n, err := c.conn.Read(buf)
 		if err != nil {
-			btlog.Ins().Error("rpcClientReadError", "node", c.node.NodeId, "addr", c.node.Addr, "err", err)
+			select {
+			case <-c.done:
+				btlog.Ins().Info("rpcClientClosed", "nodeId", c.node.NodeId, "addr", c.node.Addr)
+			default:
+				btlog.Ins().Error("rpcClientReadError", "nodeId", c.node.NodeId, "addr", c.node.Addr, "err", err)
+			}
 			return
 		}
 		frames, err := c.decoder.Decode(buf[:n])
 		if err != nil {
-			btlog.Ins().Error("rpcClientDecodeError", "node", c.node.NodeId, "addr", c.node.Addr, "err", err)
+			btlog.Ins().Error("rpcClientDecodeError", "nodeId", c.node.NodeId, "addr", c.node.Addr, "err", err)
 			return
 		}
 		for _, frame := range frames {
 			p, err := decodePacket(frame.Body)
 			if err != nil {
-				btlog.Ins().Error("rpcClientPacketDecodeError", "node", c.node.NodeId, "addr", c.node.Addr, "err", err)
+				btlog.Ins().Error("rpcClientPacketDecodeError", "nodeId", c.node.NodeId, "addr", c.node.Addr, "err", err)
 				return
 			}
 			c.handleResponseOrPush(p)
@@ -148,8 +162,11 @@ func (c *Client) handleResponseOrPush(p *Packet) {
 		c.mu.Unlock()
 		if ch != nil {
 			ch <- p
+		} else {
+			btlog.Ins().Warn("rpcClientLateResponse", "nodeId", c.node.NodeId, "seq", p.Seq, "code", p.Code)
 		}
 	case btnet.MessagePush:
+		btlog.Ins().Debug("rpcClientPushRecv", "nodeId", c.node.NodeId, "userId", p.UserId, "msgId", p.MsgId, "payload", string(p.Payload))
 		if c.onPush != nil {
 			c.onPush(p)
 		}

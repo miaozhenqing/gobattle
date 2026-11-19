@@ -100,8 +100,10 @@ func (c *Cluster) syncDiscoveredNodes(nodes []Node) {
 	}
 	c.nodes = latest
 	c.mu.Unlock()
+	btlog.Ins().Info("rpcClusterNodesDiscovered", "group", c.group, "nodes", nodes, "toConnect", len(toConnect), "toClose", len(toClose))
 	c.refreshBalancer()
 	for _, client := range toClose {
+		btlog.Ins().Info("rpcClusterNodeRemoved", "group", c.group, "nodeId", client.node.NodeId, "addr", client.node.Addr)
 		client.Close()
 	}
 	for _, node := range toConnect {
@@ -112,15 +114,15 @@ func (c *Cluster) syncDiscoveredNodes(nodes []Node) {
 func (c *Cluster) connectNode(n Node) {
 	client, err := dialNodeClient(n, c.cfg.MaxPacketSize, c.cfg.Codec, c.cfg.OnPush)
 	if err != nil {
-		btlog.Ins().Error("rpcClusterDialFail", "group", c.group, "node", n.NodeId, "addr", n.Addr, "err", err)
+		btlog.Ins().Error("rpcClusterDialFail", "group", c.group, "nodeId", n.NodeId, "addr", n.Addr, "err", err)
 		return
 	}
 	if c.cfg.Register != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), c.cfg.CallTimeout)
 		err = c.cfg.Register(ctx, client)
 		cancel()
 		if err != nil {
-			btlog.Ins().Error("rpcClusterRegisterFail", "group", c.group, "node", n.NodeId, "addr", n.Addr, "err", err)
+			btlog.Ins().Error("rpcClusterRegisterFail", "group", c.group, "nodeId", n.NodeId, "addr", n.Addr, "err", err)
 			_ = client.Close()
 			return
 		}
@@ -130,13 +132,13 @@ func (c *Cluster) connectNode(n Node) {
 	//确认下地址没变
 	if c.closed || !exists || wanted.Addr != n.Addr || c.clients[n.NodeId] != nil {
 		c.mu.Unlock()
-		btlog.Ins().Warn("rpcClusterDiscardStale", "group", c.group, "node", n.NodeId, "addr", n.Addr)
+		btlog.Ins().Warn("rpcClusterDiscardStale", "group", c.group, "nodeId", n.NodeId, "addr", n.Addr)
 		_ = client.Close()
 		return
 	}
 	c.clients[n.NodeId] = client
 	c.mu.Unlock()
-	btlog.Ins().Info("rpcClusterNodeConnected", "group", c.group, "node", n.NodeId, "addr", n.Addr)
+	btlog.Ins().Info("rpcClusterNodeConnected", "group", c.group, "nodeId", n.NodeId, "addr", n.Addr)
 	c.refreshBalancer()
 	go func() {
 		<-client.Done()
@@ -145,6 +147,7 @@ func (c *Cluster) connectNode(n Node) {
 			delete(c.clients, n.NodeId)
 		}
 		c.mu.Unlock()
+		btlog.Ins().Warn("rpcClusterNodeDisconnected", "group", c.group, "nodeId", n.NodeId, "addr", n.Addr)
 		c.refreshBalancer()
 	}()
 }
@@ -180,6 +183,7 @@ func (c *Cluster) Codec() btrouter.Codec { return c.cfg.Codec }
 
 func (c *Cluster) Invoke(ctx context.Context, method string, payload []byte) ([]byte, error) {
 	if c.hasClosed() {
+		btlog.Ins().Warn("rpcClusterClosed", "group", c.group, "rpcMethod", method)
 		return nil, btrouter.CodeUnavailable
 	}
 
@@ -191,10 +195,12 @@ func (c *Cluster) Invoke(ctx context.Context, method string, payload []byte) ([]
 
 	node, ok := c.balancer.Pick(ctx)
 	if !ok {
+		btlog.Ins().Warn("rpcClusterNoAvailableNode", "group", c.group, "rpcMethod", method, "userId", UserId(ctx))
 		return nil, btrouter.CodeUnavailable
 	}
 	client, ok := c.getNodeClient(node.NodeId)
 	if !ok || node.Addr != client.node.Addr {
+		btlog.Ins().Warn("rpcClusterNodeClientMissing", "group", c.group, "rpcMethod", method, "nodeId", node.NodeId, "addr", node.Addr)
 		return nil, btrouter.CodeUnavailable
 	}
 	return client.sendRequestAndWait(ctx, method, payload)
@@ -212,6 +218,7 @@ func (c *Cluster) Close() {
 	c.nodes = map[int64]Node{}
 	c.balancer.Update(nil)
 	c.mu.Unlock()
+	btlog.Ins().Info("rpcClusterClose", "group", c.group, "clients", len(clients))
 	for _, cli := range clients {
 		_ = cli.Close()
 	}

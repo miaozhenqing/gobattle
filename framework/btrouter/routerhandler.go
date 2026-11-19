@@ -162,11 +162,12 @@ func (r *RouterHandler) invoke(ctx *RequestContext, rt *route, payload []byte) (
 	}
 	if err == nil {
 		resp, err = r.safeCall(ctx, rt, req)
-		btlog.Ins().Debug("invoke", "connId", ctx.conn.GetId(), "msgId", ctx.msgId, "method", rt.method)
 	}
 	for i := n - 1; i >= 0; i-- {
 		r.safeAfter(ctx, rt, r.interceptors[i], req, resp, err)
 	}
+	btlog.Ins().Debug("request", "connId", ctx.conn.GetId(), "msgId", ctx.msgId, "method", rt.method,
+		"req", req, "resp", resp, "err", err, "durationMs", time.Since(ctx.startAt).Milliseconds())
 	return resp, err
 }
 
@@ -246,10 +247,12 @@ func (r *RouterHandler) Push(conn *btnet.Connection, msgId uint32, v any) error 
 	if err != nil {
 		return err
 	}
+	btlog.Ins().Debug("push", "connId", conn.GetId(), "msgId", msgId, "data", v)
 	return conn.Write(&Envelope{Type: btnet.MessagePush, MsgId: msgId, Payload: data})
 }
 
 func (r *RouterHandler) PushRaw(conn *btnet.Connection, msgId uint32, payload []byte) error {
+	btlog.Ins().Debug("push", "connId", conn.GetId(), "msgId", msgId, "payload", string(payload))
 	return conn.Write(&Envelope{Type: btnet.MessagePush, MsgId: msgId, Payload: payload})
 }
 
@@ -258,6 +261,7 @@ func (r *RouterHandler) Broadcast(mgr *btnet.ConnManager, msgId uint32, v any) e
 	if err != nil {
 		return err
 	}
+	btlog.Ins().Debug("broadcast", "msgId", msgId, "conns", mgr.Len(), "data", v)
 	// 编码一次
 	mgr.Broadcast(encodeEnvelope(&Envelope{Type: btnet.MessagePush, MsgId: msgId, Payload: data}))
 	return nil

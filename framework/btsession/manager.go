@@ -31,7 +31,11 @@ func (m *Manager) Bind(conn *btnet.Connection, userId int64) (*Session, error) {
 	m.sessions[userId] = s
 	m.mu.Unlock()
 
-	btlog.Ins().Info("sessionBind", "userId", userId, "connId", conn.GetId())
+	if old != nil {
+		btlog.Ins().Info("sessionBind", "userId", userId, "connId", conn.GetId(), "oldConnId", old.conn.GetId())
+	} else {
+		btlog.Ins().Info("sessionBind", "userId", userId, "connId", conn.GetId())
+	}
 	return old, nil
 }
 

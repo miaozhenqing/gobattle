@@ -61,11 +61,13 @@ func main() {
 	if err := registry.Register(cfg.Group, node); err != nil {
 		panic(err)
 	}
-	btlog.Ins().Info("backendStarted", "nodeId", cfg.NodeId, "addr", node.Addr, "group", cfg.Group)
+	btlog.Ins().Info("backendStarted", "nodeId", cfg.NodeId, "addr", node.Addr, "group", cfg.Group,
+		"dsEnable", cfg.DsEnable, "queryTimeout", cfg.DB.QueryTimeout.Duration().String())
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-sigCtx.Done()
+	btlog.Ins().Info("backendStopping", "nodeId", cfg.NodeId)
 
 	registry.Deregister()
 	time.Sleep(time.Second)
@@ -79,6 +81,7 @@ func main() {
 	if err := db.Close(); err != nil {
 		btlog.Ins().Error("dbCloseError", "err", err)
 	}
+	btlog.Ins().Info("backendStopped", "nodeId", cfg.NodeId)
 }
 
 func openDB(c config.DBConfig) *repository.DB {

@@ -160,7 +160,9 @@ type ItemInfo struct {
 	Count    int64 `json:"count"`
 }
 
-type ItemListReq struct{}
+type ItemListReq struct {
+	UserId int64 `json:"userId"`
+}
 
 type ItemListResp struct {
 	Items []*ItemInfo `json:"items"`
