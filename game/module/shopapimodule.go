@@ -2,10 +2,10 @@ package module
 
 import (
 	"context"
+	"gobattle/common/api"
+	"gobattle/common/protocol"
 	"gobattle/framework/btrpc"
 	"gobattle/game/service"
-	"gobattle/shared/api"
-	"gobattle/shared/protocol"
 )
 
 var _ api.ShopApi = (*ShopApiModule)(nil)

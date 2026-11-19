@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"gobattle/common/api"
 	"gobattle/framework/btconfig"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btnet"
@@ -13,7 +14,6 @@ import (
 	"gobattle/game/repository"
 	"gobattle/game/service"
 	"gobattle/game/tpl"
-	"gobattle/shared/api"
 	"os"
 	"os/signal"
 	"syscall"

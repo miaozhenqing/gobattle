@@ -3,11 +3,11 @@ package module
 import (
 	"context"
 	"fmt"
+	"gobattle/common/api"
+	"gobattle/common/protocol"
 	"gobattle/framework/btrouter"
 	"gobattle/game/domain"
 	"gobattle/game/service"
-	"gobattle/shared/api"
-	"gobattle/shared/protocol"
 	"strconv"
 	"strings"
 )

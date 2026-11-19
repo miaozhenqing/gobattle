@@ -3,8 +3,8 @@ package service
 import (
 	"errors"
 	"fmt"
+	"gobattle/common/protocol"
 	"gobattle/framework/btrouter"
-	"gobattle/shared/protocol"
 )
 
 func dbFailed(err error, format string, args ...any) error {

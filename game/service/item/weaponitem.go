@@ -2,9 +2,9 @@ package item
 
 import (
 	"context"
+	"gobattle/common/protocol"
 	"gobattle/game/model"
 	"gobattle/game/repository"
-	"gobattle/shared/protocol"
 )
 
 type weaponItemHandler struct{}

@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"flag"
+	"gobattle/common/protocol"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btrouter"
-	"gobattle/shared/protocol"
 	"time"
 )
 

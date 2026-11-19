@@ -2,8 +2,8 @@ package module
 
 import (
 	"context"
+	"gobattle/common/api"
 	"gobattle/framework/btrpc"
-	"gobattle/shared/api"
 )
 
 var _ api.PeerApi = (*PeerApiModule)(nil)

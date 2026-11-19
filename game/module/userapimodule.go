@@ -2,9 +2,9 @@ package module
 
 import (
 	"context"
+	"gobattle/common/api"
+	"gobattle/common/protocol"
 	"gobattle/game/service"
-	"gobattle/shared/api"
-	"gobattle/shared/protocol"
 	"unicode/utf8"
 )
 

@@ -2,8 +2,8 @@ package api
 
 import (
 	"context"
+	"gobattle/common/protocol"
 	"gobattle/framework/btrpc"
-	"gobattle/shared/protocol"
 )
 
 type UserApi interface {

@@ -1,13 +1,13 @@
 package module
 
 import (
+	"gobattle/common/api"
+	"gobattle/common/protocol"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btrouter"
 	"gobattle/framework/btrpc"
 	"gobattle/framework/btsession"
 	"gobattle/gateway/service"
-	"gobattle/shared/api"
-	"gobattle/shared/protocol"
 )
 
 type LoginModule struct {

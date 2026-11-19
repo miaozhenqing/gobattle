@@ -1,9 +1,9 @@
 package module
 
 import (
+	"gobattle/common/protocol"
 	"gobattle/framework/btrouter"
 	"gobattle/game/service"
-	"gobattle/shared/protocol"
 	"net"
 )
 

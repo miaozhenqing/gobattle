@@ -3,11 +3,11 @@ package service
 import (
 	"cmp"
 	"errors"
+	"gobattle/common/protocol"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btsession"
 	"gobattle/game/tpl"
 	"gobattle/game/util/timeutil"
-	"gobattle/shared/protocol"
 	"maps"
 	"net"
 	"slices"

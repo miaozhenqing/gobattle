@@ -1,9 +1,9 @@
 package module
 
 import (
+	"gobattle/common/api"
+	"gobattle/common/protocol"
 	"gobattle/framework/btrouter"
-	"gobattle/shared/api"
-	"gobattle/shared/protocol"
 )
 
 type ItemModule struct {

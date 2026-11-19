@@ -1,10 +1,10 @@
 package module
 
 import (
+	"gobattle/common/protocol"
 	"gobattle/framework/btrouter"
 	"gobattle/framework/btsession"
 	"gobattle/game/service"
-	"gobattle/shared/protocol"
 )
 
 type BattleModule struct {

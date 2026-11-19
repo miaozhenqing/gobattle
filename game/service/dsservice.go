@@ -1,10 +1,10 @@
 package service
 
 import (
+	"gobattle/common/protocol"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btnet"
 	"gobattle/game/util/timeutil"
-	"gobattle/shared/protocol"
 	"sync"
 	"sync/atomic"
 )

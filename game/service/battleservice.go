@@ -2,9 +2,9 @@ package service
 
 import (
 	"errors"
+	"gobattle/common/protocol"
 	"gobattle/framework/btlog"
 	"gobattle/game/util/timeutil"
-	"gobattle/shared/protocol"
 	"sync"
 	"sync/atomic"
 	"time"
