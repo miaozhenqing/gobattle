@@ -21,16 +21,16 @@ func Invoke[Resp any](ctx context.Context, inv Invoker, method string, req any) 
 		return nil, err
 	}
 	data, err := inv.Invoke(ctx, method, payload)
-	if err != nil {
+	if err != nil && len(data) == 0 {
 		return nil, err
 	}
 	resp := new(Resp)
 	if len(data) > 0 {
-		if err := inv.Codec().Unmarshal(data, resp); err != nil {
-			return nil, err
+		if uErr := inv.Codec().Unmarshal(data, resp); uErr != nil {
+			return nil, uErr
 		}
 	}
-	return resp, nil
+	return resp, err
 }
 
 type Discovery interface {

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"gobattle/framework/btsession"
 	"gobattle/game/domain"
 	"gobattle/game/model"
 	"gobattle/game/repository"
@@ -27,7 +26,7 @@ func NewShopService(db *repository.DB, tplMgr *tpl.TplManager, itemService *Item
 	return &ShopService{db: db, tplMgr: tplMgr, itemService: itemService, idNode: idNode, queryTimeout: queryTimeout}
 }
 
-func (s *ShopService) Buy(ctx context.Context, session *btsession.Session, shopId int) (*domain.ShopPurchase, error) {
+func (s *ShopService) Buy(ctx context.Context, userId int64, shopId int) (*domain.ShopPurchase, error) {
 	//商品配置检查
 	shopTpl, ok := s.tplMgr.GetShopTpl(shopId)
 	if !ok {
@@ -37,7 +36,6 @@ func (s *ShopService) Buy(ctx context.Context, session *btsession.Session, shopI
 	if err != nil {
 		return nil, err
 	}
-	userId := session.UserId()
 
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()

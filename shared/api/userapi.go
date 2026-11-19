@@ -3,21 +3,11 @@ package api
 import (
 	"context"
 	"gobattle/framework/btrpc"
+	"gobattle/shared/protocol"
 )
 
-type LoginReq struct {
-	Username string `json:"username"`
-}
-
-type LoginResp struct {
-	UserId   int64  `json:"userId"`
-	Username string `json:"username"`
-	RoleName string `json:"roleName"`
-	IsNew    bool   `json:"isNew"`
-}
-
 type UserApi interface {
-	Login(ctx context.Context, req *LoginReq) (*LoginResp, error)
+	Login(ctx context.Context, req *protocol.LoginReq) (*protocol.LoginResp, error)
 }
 
 var _ UserApi = (*UserApiClient)(nil)
@@ -30,6 +20,6 @@ func NewUserApiClient(inv btrpc.Invoker) *UserApiClient {
 	return &UserApiClient{inv: inv}
 }
 
-func (c *UserApiClient) Login(ctx context.Context, req *LoginReq) (*LoginResp, error) {
-	return btrpc.Invoke[LoginResp](ctx, c.inv, "UserApi.Login", req)
+func (c *UserApiClient) Login(ctx context.Context, req *protocol.LoginReq) (*protocol.LoginResp, error) {
+	return btrpc.Invoke[protocol.LoginResp](ctx, c.inv, "UserApi.Login", req)
 }

@@ -214,7 +214,7 @@ func (r *RouterHandler) reply(conn *btnet.Connection, req *Envelope, resp any, e
 	}
 
 	out := &Envelope{Type: btnet.MessageResponse, Seq: req.Seq, MsgId: req.MsgId, Code: uint32(code)}
-	if code == CodeOK && resp != nil {
+	if resp != nil {
 		b, mErr := r.codec.Marshal(resp)
 		if mErr != nil {
 			btlog.Ins().Error("marshalRespError", "connId", conn.GetId(), "msgId", req.MsgId, "err", mErr)

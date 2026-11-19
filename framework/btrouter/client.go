@@ -48,16 +48,16 @@ func Dial(addr string, maxFrameSize int, codec Codec, onPush func(msgId uint32, 
 
 func Call[Resp any](ctx context.Context, c *Client, msgId uint32, req any) (*Resp, error) {
 	data, err := c.roundTrip(ctx, msgId, req)
-	if err != nil {
+	if err != nil && len(data) == 0 {
 		return nil, err
 	}
 	resp := new(Resp)
 	if len(data) > 0 {
-		if err := c.codec.Unmarshal(data, resp); err != nil {
-			return nil, err
+		if uErr := c.codec.Unmarshal(data, resp); uErr != nil {
+			return nil, uErr
 		}
 	}
-	return resp, nil
+	return resp, err
 }
 
 func (c *Client) Notify(msgId uint32, req any) error {
@@ -98,7 +98,7 @@ func (c *Client) roundTrip(ctx context.Context, msgId uint32, req any) ([]byte, 
 	select {
 	case env := <-ch:
 		if Code(env.Code) != CodeOK {
-			return nil, Code(env.Code)
+			return env.Payload, Code(env.Code)
 		}
 		return env.Payload, nil
 	case <-ctx.Done():

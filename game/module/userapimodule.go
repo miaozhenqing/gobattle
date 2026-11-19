@@ -18,7 +18,7 @@ func NewUserApiModule(userService *service.UserService) *UserApiModule {
 	return &UserApiModule{userService: userService}
 }
 
-func (m *UserApiModule) Login(ctx context.Context, req *api.LoginReq) (*api.LoginResp, error) {
+func (m *UserApiModule) Login(ctx context.Context, req *protocol.LoginReq) (*protocol.LoginResp, error) {
 	if !validUsername(req.Username) {
 		return nil, protocol.CodeInvalidUsername
 	}
@@ -27,7 +27,7 @@ func (m *UserApiModule) Login(ctx context.Context, req *api.LoginReq) (*api.Logi
 		return nil, err
 	}
 	u := res.User
-	return &api.LoginResp{UserId: u.UserId, Username: u.Username, RoleName: u.RoleName, IsNew: res.Created}, nil
+	return &protocol.LoginResp{UserId: u.UserId, Username: u.Username, RoleName: u.RoleName, IsNew: res.Created}, nil
 }
 
 func validUsername(s string) bool {

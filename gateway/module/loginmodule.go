@@ -30,7 +30,7 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *protocol.LoginReq
 		return nil, protocol.CodeAlreadyLogin
 	}
 	rctx := btrpc.WithRequestMeta(ctx, btrpc.RequestMeta{})
-	res, err := m.userApi.Login(rctx, &api.LoginReq{Username: req.Username})
+	res, err := m.userApi.Login(rctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -38,11 +38,12 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *protocol.LoginReq
 	if err != nil {
 		return nil, protocol.CodeAlreadyLogin
 	}
+	// todo 只能顶掉本 gateway 上的旧连接
 	if old != nil {
 		m.kick(old)
 	}
 	btlog.Ins().Info("login", "userId", res.UserId, "username", res.Username, "created", res.IsNew, "connId", ctx.Conn().GetId())
-	return &protocol.LoginResp{UserId: res.UserId, Username: res.Username, RoleName: res.RoleName, IsNew: res.IsNew}, nil
+	return res, nil
 }
 
 func (m *LoginModule) kick(old *btsession.Session) {

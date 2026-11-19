@@ -89,7 +89,7 @@ func (c *Client) sendRequestAndWait(ctx context.Context, method string, payload 
 		btlog.Ins().Debug("rpcCall", "nodeId", c.node.NodeId, "rpcMethod", method, "seq", seq, "userId", m.UserId,
 			"code", resp.Code, "req", string(payload), "resp", string(resp.Payload), "durationMs", time.Since(startAt).Milliseconds())
 		if code := btrouter.Code(resp.Code); code != btrouter.CodeOK {
-			return nil, code
+			return resp.Payload, code
 		}
 		return resp.Payload, nil
 	case <-ctx.Done():

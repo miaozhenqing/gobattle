@@ -16,6 +16,7 @@ func main() {
 
 	client := dial(*addr)
 	defer client.Close()
+
 	loginResp, err := call[protocol.LoginResp](client, protocol.MsgLogin, &protocol.LoginReq{Username: *username})
 	if err != nil {
 		btlog.Ins().Error("MsgLogin", "err", err)

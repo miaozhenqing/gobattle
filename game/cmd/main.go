@@ -30,24 +30,32 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	_ = tplMgr
 	db := openDB(cfg.DB)
 	idNode, err := snowflake.NewNode(cfg.NodeId)
 	if err != nil {
 		panic(err)
 	}
 
-	userService := service.NewUserService(db, idNode, cfg.DB.QueryTimeout.Duration())
+	queryTimeout := cfg.DB.QueryTimeout.Duration()
 	rpcServer := btrpc.NewServer(cfg.Rpc, btrouter.JSONCodec{})
+	dsRouter := btrouter.NewRouterHandler(btrouter.JSONCodec{})
+	pushService := service.NewPushService(rpcServer, dsRouter)
+	userService := service.NewUserService(db, idNode, queryTimeout)
+	itemService := service.NewItemService(db, pushService, idNode, queryTimeout, tplMgr)
+	shopService := service.NewShopService(db, tplMgr, itemService, idNode, queryTimeout)
+
 	btrpc.RegisterBeforeBind[api.PeerApi](rpcServer, module.NewPeerApiModule(rpcServer), "Register")
 	btrpc.Register[api.UserApi](rpcServer, module.NewUserApiModule(userService))
+	btrpc.Register[api.ItemApi](rpcServer, module.NewItemApiModule(itemService))
+	btrpc.Register[api.ShopApi](rpcServer, module.NewShopApiModule(shopService))
+	btrpc.Register[api.GmApi](rpcServer, module.NewGmApiModule(itemService))
 	if err := rpcServer.Start(); err != nil {
 		panic(err)
 	}
 
 	var dsServer *btnet.ServerGroup
 	if cfg.DsEnable {
-		dsServer = newDsServer(cfg.DsServer, service.NewDsService())
+		dsServer = newDsServer(cfg.DsServer, dsRouter, service.NewDsService())
 		if err := dsServer.Server.Start(); err != nil {
 			panic(err)
 		}
@@ -62,7 +70,7 @@ func main() {
 		panic(err)
 	}
 	btlog.Ins().Info("backendStarted", "nodeId", cfg.NodeId, "addr", node.Addr, "group", cfg.Group,
-		"dsEnable", cfg.DsEnable, "queryTimeout", cfg.DB.QueryTimeout.Duration().String())
+		"dsEnable", cfg.DsEnable, "queryTimeout", queryTimeout.String())
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -98,8 +106,7 @@ func openDB(c config.DBConfig) *repository.DB {
 	return db
 }
 
-func newDsServer(c btconfig.ServerConfig, dsService *service.DsService) *btnet.ServerGroup {
-	router := btrouter.NewRouterHandler(btrouter.JSONCodec{})
+func newDsServer(c btconfig.ServerConfig, router *btrouter.RouterHandler, dsService *service.DsService) *btnet.ServerGroup {
 	router.AddInterceptor(btrouter.SlowLog(50 * time.Millisecond))
 	router.RegisterModules(module.NewDsModule(dsService))
 

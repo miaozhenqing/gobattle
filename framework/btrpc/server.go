@@ -230,13 +230,11 @@ func (s *Server) callMethod(ctx context.Context, m *method, payload []byte) (res
 		}
 	}
 	out := m.fn.Call([]reflect.Value{reflect.ValueOf(ctx), req})
-	if e, _ := out[1].Interface().(error); e != nil {
-		return nil, e
-	}
+	err, _ = out[1].Interface().(error)
 	if out[0].IsNil() {
-		return nil, nil
+		return nil, err
 	}
-	return out[0].Interface(), nil
+	return out[0].Interface(), err
 }
 
 func (s *Server) sendResponse(conn *btnet.Connection, req *Packet, resp any, err error) {
@@ -246,7 +244,7 @@ func (s *Server) sendResponse(conn *btnet.Connection, req *Packet, resp any, err
 		return
 	}
 	out := &Packet{Type: btnet.MessageResponse, Seq: req.Seq, Code: uint32(code)}
-	if code == btrouter.CodeOK && resp != nil {
+	if resp != nil {
 		b, err := s.codec.Marshal(resp)
 		if err != nil {
 			btlog.Ins().Error("rpcMarshalRespError", "rpcMethod", req.Method, "err", err)
@@ -295,13 +293,13 @@ func (s *Server) Push(peer Peer, userId int64, msgId uint32, v any) error {
 	return conn.Write(&Packet{Type: btnet.MessagePush, MsgId: msgId, UserId: userId, Payload: data})
 }
 
-func (s *Server) Broadcast(peerType string, msgId uint32, v any) error {
+func (s *Server) Broadcast(peerType string, userId int64, msgId uint32, v any) error {
 	data, err := s.codec.Marshal(v)
 	if err != nil {
 		return err
 	}
 	//编码一次
-	frame := encodePacket(&Packet{Type: btnet.MessagePush, MsgId: msgId, Payload: data})
+	frame := encodePacket(&Packet{Type: btnet.MessagePush, MsgId: msgId, UserId: userId, Payload: data})
 	s.mu.RLock()
 	conns := make([]*btnet.Connection, 0, len(s.peers))
 	for peer, c := range s.peers {
@@ -310,7 +308,7 @@ func (s *Server) Broadcast(peerType string, msgId uint32, v any) error {
 		}
 	}
 	s.mu.RUnlock()
-	btlog.Ins().Debug("rpcBroadcast", "peerType", peerType, "conns", len(conns), "msgId", msgId, "data", v)
+	btlog.Ins().Debug("rpcBroadcast", "peerType", peerType, "userId", userId, "conns", len(conns), "msgId", msgId, "data", v)
 	for _, c := range conns {
 		c.Write(frame)
 	}

@@ -1,6 +1,9 @@
 package protocol
 
 const (
+
+	// ==================== gm ====================
+	MsgGM uint32 = 1001
 	// ==================== 登录 ====================
 	MsgLogin     uint32 = 1101
 	MsgHeartBeat uint32 = 1102
@@ -160,9 +163,7 @@ type ItemInfo struct {
 	Count    int64 `json:"count"`
 }
 
-type ItemListReq struct {
-	UserId int64 `json:"userId"`
-}
+type ItemListReq struct{}
 
 type ItemListResp struct {
 	Items []*ItemInfo `json:"items"`
@@ -186,4 +187,14 @@ type ShopBuyResp struct {
 	ShopId      int   `json:"shopId"`
 	BuyCount    int   `json:"buyCount"`
 	LastBuyTime int64 `json:"lastBuyTime"`
+}
+
+// ==============gm
+type GMReq struct {
+	Name string `json:"Name"`
+	Args string `json:"Args"` //str|str|str
+}
+
+type GMResp struct {
+	Msg string `json:"msg"`
 }

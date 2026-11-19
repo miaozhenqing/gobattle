@@ -52,7 +52,12 @@ func main() {
 		panic(err)
 	}
 	//
-	router.RegisterModules(module.NewLoginModule(api.NewUserApiClient(logicCluster), pushService, sessionMgr))
+	router.RegisterModules(
+		module.NewLoginModule(api.NewUserApiClient(logicCluster), pushService, sessionMgr),
+		module.NewItemModule(api.NewItemApiClient(logicCluster)),
+		module.NewShopModule(api.NewShopApiClient(logicCluster)),
+		module.NewGmModule(api.NewGmApiClient(logicCluster)),
+	)
 	gw := newGatewayServer(cfg.Server, router, sessionMgr)
 	if err := gw.Server.Start(); err != nil {
 		panic(err)
