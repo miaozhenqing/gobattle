@@ -24,6 +24,7 @@ type app struct {
 	idNode    *snowflake.Node
 	registry  *btregistry.ZkRegistry
 	rpcServer *btrpc.Server
+	clusters  *btrpc.ClusterManager
 	stops     []func(ctx context.Context)
 }
 
@@ -44,10 +45,23 @@ func newApp(cfg *config.GameConfig) *app {
 	//目前所有模块都会被调用，所以都要放开注册
 	btrpc.RegisterBeforeBind[api.PeerApi](rpcServer, module.NewPeerApiModule(rpcServer), "Register")
 
-	return &app{cfg: cfg, tplMgr: tplMgr, idNode: idNode, registry: registry, rpcServer: rpcServer}
+	return &app{cfg: cfg, tplMgr: tplMgr, idNode: idNode, registry: registry, rpcServer: rpcServer,
+		clusters: newClusterManager(cfg, registry)}
 }
 
-// 注册停机回调，run 退出时逆序执行：后创建的先关（如 dsServer 先于 db）
+func newClusterManager(cfg *config.GameConfig, registry *btregistry.ZkRegistry) *btrpc.ClusterManager {
+	return btrpc.NewClusterManager(btrpc.ClusterConfig{
+
+		Register: func(ctx context.Context, inv btrpc.Invoker) error {
+			_, err := api.NewPeerApiClient(inv).Register(ctx, &api.RegisterPeerReq{PeerType: cfg.Role, PeerId: cfg.NodeId})
+			return err
+		},
+		MaxPacketSize: cfg.RpcMaxPacketSize,
+		CallTimeout:   cfg.CallTimeout.Duration(),
+		Codec:         btrouter.JSONCodec{},
+	}, registry)
+}
+
 func (a *app) onStop(fn func(ctx context.Context)) {
 	a.stops = append(a.stops, fn)
 }
@@ -79,6 +93,7 @@ func (a *app) run() {
 	for i := len(a.stops) - 1; i >= 0; i-- {
 		a.stops[i](ctx)
 	}
+	a.clusters.Close()
 	a.registry.Close()
 	btlog.Ins().Info("backendStopped", "role", cfg.Role, "nodeId", cfg.NodeId)
 }

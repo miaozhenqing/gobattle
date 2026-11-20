@@ -36,8 +36,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	//创建logic的集群信息
-	logicCluster, err := btrpc.NewCluster(btrpc.ClusterConfig{
+	clusters := btrpc.NewClusterManager(btrpc.ClusterConfig{
 		Register: func(ctx context.Context, inv btrpc.Invoker) error {
 			_, err := api.NewPeerApiClient(inv).Register(ctx, &api.RegisterPeerReq{PeerType: "gateway", PeerId: cfg.NodeId})
 			return err
@@ -46,12 +45,10 @@ func main() {
 		CallTimeout:   cfg.CallTimeout.Duration(),
 		Codec:         btrouter.JSONCodec{},
 		OnPush:        pushService.OnBackendPush,
-	}, registry, "logic", btrpc.RoundRobin())
-	if err != nil {
-		btlog.Ins().Error("newClusterError", "err", err)
-		panic(err)
-	}
-	//
+	}, registry)
+
+	logicCluster := clusters.MustGet(api.GroupLogic, btrpc.RoundRobin())
+
 	router.RegisterModules(
 		module.NewLoginModule(api.NewUserApiClient(logicCluster), pushService, sessionMgr),
 		module.NewItemModule(api.NewItemApiClient(logicCluster)),
@@ -72,8 +69,9 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	gw.Shutdown(ctx)
-	logicCluster.Close()
+	clusters.Close()
 	registry.Close()
 	btlog.Ins().Info("gatewayStopped", "nodeId", cfg.NodeId)
 }
