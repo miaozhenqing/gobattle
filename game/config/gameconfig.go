@@ -7,20 +7,23 @@ import (
 	"gobattle/framework/btconfig"
 	_ "os"
 	"strconv"
+	"time"
 )
 
 var Game *GameConfig
 
 type GameConfig struct {
-	NodeId        int64                 `json:"nodeId"`
-	Group         string                `json:"group"`
-	AdvertiseHost string                `json:"advertiseHost"`
-	TplDir        string                `json:"tplDir"`
-	Rpc           btconfig.ServerConfig `json:"rpc"`
-	DsEnable      bool                  `json:"dsEnable"`
-	DsServer      btconfig.ServerConfig `json:"dsServer"`
-	Zk            btconfig.ZkConfig     `json:"zk"`
-	DB            DBConfig              `json:"db"`
+	NodeId           int64                 `json:"nodeId"`
+	Role             string                `json:"role"`
+	AdvertiseHost    string                `json:"advertiseHost"`
+	TplDir           string                `json:"tplDir"`
+	Rpc              btconfig.ServerConfig `json:"rpc"`
+	CallTimeout      btconfig.Duration     `json:"callTimeout"`
+	RpcMaxPacketSize int                   `json:"rpcMaxPacketSize"`
+	DsEnable         bool                  `json:"dsEnable"`
+	DsServer         btconfig.ServerConfig `json:"dsServer"`
+	Zk               btconfig.ZkConfig     `json:"zk"`
+	DB               DBConfig              `json:"db"`
 }
 
 type DBConfig struct {
@@ -38,12 +41,13 @@ type DBConfig struct {
 
 func Load() {
 	path := flag.String("config", "game/game.json", "config file")
+	role := flag.String("role", "", "override role")
 	nodeId := flag.Int64("nodeId", 0, "override nodeId")
 	port := flag.Int("port", 0, "override rpc.tcpPort")
 	advertiseHost := flag.String("advertiseHost", "", "override advertiseHost")
 	flag.Parse()
 
-	cfg := &GameConfig{TplDir: "game/tpl/json"}
+	cfg := &GameConfig{TplDir: "game/tpl/json", CallTimeout: btconfig.Duration(3 * time.Second), RpcMaxPacketSize: 65536}
 	if err := btconfig.LoadJSON(*path, cfg); err != nil {
 		panic(fmt.Sprintf("load config %s: %v", *path, err))
 	}
@@ -56,8 +60,12 @@ func Load() {
 	if *advertiseHost != "" {
 		cfg.AdvertiseHost = *advertiseHost
 	}
-	if cfg.NodeId <= 0 || cfg.Group == "" {
-		panic("nodeId and group are required")
+
+	if *role != "" {
+		cfg.Role = *role
+	}
+	if cfg.NodeId <= 0 || cfg.Role == "" {
+		panic("nodeId and role are required")
 	}
 	Game = cfg
 }
