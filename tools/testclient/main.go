@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"gobattle/common/protocol"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btrouter"
@@ -18,9 +19,21 @@ func main() {
 	defer client.Close()
 
 	loginResp, err := call[protocol.LoginResp](client, protocol.MsgLogin, &protocol.LoginReq{Username: *username})
+	btlog.Ins().Info("MsgLogin", "resp", loginResp, "err", err)
+
+	gmResp, err := call[protocol.GMResp](client, protocol.MsgGM, &protocol.GMReq{
+		Name: "GMItemAdd",
+		Args: fmt.Sprintf("%d|%d|%d|%d", loginResp.UserId, 1, 10001, 100),
+	})
+	btlog.Ins().Info("MsgLogin", "resp", gmResp, "err", err)
+
+	itemListResp, err := call[protocol.ItemListResp](client, protocol.MsgItemList, &protocol.ItemListReq{})
 	if err != nil {
-		btlog.Ins().Error("MsgLogin", "err", err)
-		return
+		btlog.Ins().Error("MsgItemList", "err", err)
+	} else {
+		for _, item := range itemListResp.Items {
+			btlog.Ins().Info("itemList", "id", item.Id, "category", item.Category, "itemId", item.ItemId, "count", item.Count)
+		}
 	}
 
 	go func() {

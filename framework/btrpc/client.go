@@ -13,6 +13,7 @@ import (
 
 const clientReadBufSize = 64 * 1024
 
+// 单个远端节点的 TCP 连接管理器
 type Client struct {
 	node    Node
 	conn    net.Conn
@@ -30,6 +31,7 @@ type Client struct {
 	done      chan struct{}
 }
 
+// 建立连接，开启数据监听
 func dialNodeClient(node Node, maxFrameSize int, codec btrouter.Codec, onPush func(*Packet)) (*Client, error) {
 	conn, err := net.DialTimeout("tcp", node.Addr, 3*time.Second)
 	if err != nil {
@@ -54,6 +56,7 @@ func (c *Client) Invoke(ctx context.Context, method string, payload []byte) ([]b
 
 func (c *Client) Codec() btrouter.Codec { return c.codec }
 
+// 发送请求，等待响应
 func (c *Client) sendRequestAndWait(ctx context.Context, method string, payload []byte) ([]byte, error) {
 	seq := c.nextRequestSeq()
 	ch := make(chan *Packet, 1)
@@ -124,6 +127,7 @@ func (c *Client) writePacket(p *Packet) error {
 	return err
 }
 
+// 从网络中读取数据，解包，交付给业务入口
 func (c *Client) readPackets() {
 	defer c.Close()
 	buf := make([]byte, clientReadBufSize)

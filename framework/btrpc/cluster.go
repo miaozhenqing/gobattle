@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// 主要是Cluster和 Client
 type Invoker interface {
 	Invoke(ctx context.Context, method string, payload []byte) ([]byte, error)
 	Codec() btrouter.Codec
@@ -45,14 +46,15 @@ type ClusterConfig struct {
 	OnPush        func(p *Packet)
 }
 
+// 集群管理，包括，服务注册发现、连接管理，rpc调用等
 type Cluster struct {
 	cfg      ClusterConfig
-	group    string
+	group    string //服务分组名
 	balancer Balancer
 
 	mu      sync.Mutex
-	clients map[int64]*Client
-	nodes   map[int64]Node
+	clients map[int64]*Client //已经建立连接并成功注册
+	nodes   map[int64]Node    //监听到的节点
 	closed  bool
 }
 
@@ -111,10 +113,17 @@ func (c *Cluster) syncDiscoveredNodes(nodes []Node) {
 	}
 }
 
+func (c *Cluster) removeNodeWithLock(nodeId int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.nodes, nodeId)
+}
+
 func (c *Cluster) connectNode(n Node) {
 	client, err := dialNodeClient(n, c.cfg.MaxPacketSize, c.cfg.Codec, c.cfg.OnPush)
 	if err != nil {
 		btlog.Ins().Error("rpcClusterDialFail", "group", c.group, "nodeId", n.NodeId, "addr", n.Addr, "err", err)
+		c.removeNodeWithLock(n.NodeId)
 		return
 	}
 	if c.cfg.Register != nil {
@@ -124,6 +133,7 @@ func (c *Cluster) connectNode(n Node) {
 		if err != nil {
 			btlog.Ins().Error("rpcClusterRegisterFail", "group", c.group, "nodeId", n.NodeId, "addr", n.Addr, "err", err)
 			_ = client.Close()
+			c.removeNodeWithLock(n.NodeId)
 			return
 		}
 	}
@@ -145,6 +155,7 @@ func (c *Cluster) connectNode(n Node) {
 		c.mu.Lock()
 		if c.clients[n.NodeId] == client {
 			delete(c.clients, n.NodeId)
+			delete(c.nodes, n.NodeId) //此处已加锁，直接调用 removeNodeWithLock 会死锁
 		}
 		c.mu.Unlock()
 		btlog.Ins().Warn("rpcClusterNodeDisconnected", "group", c.group, "nodeId", n.NodeId, "addr", n.Addr)
