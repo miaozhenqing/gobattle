@@ -77,15 +77,14 @@ func main() {
 }
 
 func newGatewayServer(c btconfig.ServerConfig, router *btrouter.RouterHandler, sessionMgr *btsession.Manager) *btnet.ServerGroup {
-	boss := btnet.NewEventLoopGroup("gw-boss", 1)
 	worker := btnet.NewEventLoopGroup("gw-worker", c.IOLoops())
 	biz := btnet.NewEventLoopGroup("gw-biz", c.BizLoops())
-	s := btnet.NewServer(c.Options(), boss, worker)
+	s := btnet.NewServer(c.Options(), worker)
 	sessionHandler := btsession.NewSessionHandler(sessionMgr)
 	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
 		p.AddLastGroup(biz, sessionHandler)
 		p.AddLastGroup(biz, router)
 	})
-	return &btnet.ServerGroup{Name: "gateway", Server: s, Groups: []*btnet.EventLoopGroup{boss, worker, biz}}
+	return &btnet.ServerGroup{Name: "gateway", Server: s, Groups: []*btnet.EventLoopGroup{worker, biz}}
 }

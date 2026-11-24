@@ -64,15 +64,14 @@ func newDsServer(c btconfig.ServerConfig, router *btrouter.RouterHandler, dsServ
 	router.AddInterceptor(btrouter.SlowLog(50 * time.Millisecond))
 	router.RegisterModules(module.NewDsModule(dsService))
 
-	boss := btnet.NewEventLoopGroup("ds-boss", 1)
 	worker := btnet.NewEventLoopGroup("ds-worker", c.IOLoops())
 	biz := btnet.NewEventLoopGroup("ds-biz", c.BizLoops())
-	s := btnet.NewServer(c.Options(), boss, worker)
+	s := btnet.NewServer(c.Options(), worker)
 	connHandler := module.NewDsConnHandler(dsService)
 	s.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(btrouter.NewEnvelopeCodec())
 		p.AddLastGroup(biz, connHandler)
 		p.AddLastGroup(biz, router)
 	})
-	return &btnet.ServerGroup{Name: "ds", Server: s, Groups: []*btnet.EventLoopGroup{boss, worker, biz}}
+	return &btnet.ServerGroup{Name: "ds", Server: s, Groups: []*btnet.EventLoopGroup{worker, biz}}
 }

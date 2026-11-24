@@ -55,15 +55,14 @@ func NewServer(cfg btconfig.ServerConfig, codec btrouter.Codec) *Server {
 		codec = btrouter.JSONCodec{}
 	}
 	s := &Server{codec: codec, methods: make(map[string]*method), peers: make(map[Peer]*btnet.Connection)}
-	boss := btnet.NewEventLoopGroup("rpc-boss", 1)
 	worker := btnet.NewEventLoopGroup("rpc-worker", cfg.IOLoops())
 	s.biz = btnet.NewEventLoopGroup("rpc-biz", cfg.BizLoops())
-	srv := btnet.NewServer(cfg.Options(), boss, worker)
+	srv := btnet.NewServer(cfg.Options(), worker)
 	srv.SetPipelineInitializer(func(p *btnet.Pipeline) {
 		p.AddLast(PacketCodec{})
 		p.AddLast(s)
 	})
-	s.group = &btnet.ServerGroup{Name: "rpc", Server: srv, Groups: []*btnet.EventLoopGroup{boss, worker, s.biz}}
+	s.group = &btnet.ServerGroup{Name: "rpc", Server: srv, Groups: []*btnet.EventLoopGroup{worker, s.biz}}
 	return s
 }
 

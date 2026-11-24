@@ -15,15 +15,13 @@ type Server struct {
 	connMgr     *ConnManager
 	initializer PipelineInitializer
 	listener    *net.TCPListener
-	bossGroup   *EventLoopGroup
 	workerGroup *EventLoopGroup
 }
 
-func NewServer(opts Options, boss, worker *EventLoopGroup) *Server {
+func NewServer(opts Options, worker *EventLoopGroup) *Server {
 	s := &Server{
 		opts:        opts,
 		connMgr:     NewConnManager(),
-		bossGroup:   boss,
 		workerGroup: worker,
 	}
 	return s
@@ -57,7 +55,7 @@ func (s *Server) Start() error {
 	s.listener = listener
 	btlog.Ins().Info("serverListening", "server", s.opts.Name, "addr", listener.Addr().String(), "maxConn", s.opts.MaxConn,
 		"maxPacketSize", s.opts.MaxPacketSize, "idleTimeout", s.opts.IdleTimeout.String(), "writeTimeout", s.opts.WriteTimeout.String())
-	s.bossGroup.Next(0).Execute(s.acceptLoop)
+	go s.acceptLoop()
 	return nil
 }
 
