@@ -4,10 +4,13 @@ import (
 	"errors"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btnet"
+	"gobattle/framework/btrouter"
 	"sync"
 )
 
 var ErrAlreadyLogin = errors.New("conn already login")
+var ErrLoginSuperseded = errors.New("newer local session exists")
+var ErrConnClosed = errors.New("conn closed")
 
 type Manager struct {
 	mu              sync.RWMutex
@@ -19,24 +22,32 @@ func NewManager() *Manager {
 	return &Manager{sessions: make(map[int64]*Session)}
 }
 
-func (m *Manager) Bind(conn *btnet.Connection, userId int64) (*Session, error) {
-	if _, ok := GetSession(conn); ok {
-		return nil, ErrAlreadyLogin
-	}
-	s := &Session{userId: userId, conn: conn}
-	sessionKey.Set(conn, s)
-
+func (m *Manager) Bind(conn *btnet.Connection, userId int64, id string, version int64) (*Session, *Session, error) {
 	m.mu.Lock()
-	old := m.sessions[userId]
-	m.sessions[userId] = s
-	m.mu.Unlock()
+	defer m.mu.Unlock()
 
-	if old != nil {
-		btlog.Ins().Info("sessionBind", "userId", userId, "connId", conn.GetId(), "oldConnId", old.conn.GetId())
-	} else {
-		btlog.Ins().Info("sessionBind", "userId", userId, "connId", conn.GetId())
+	if _, ok := GetSession(conn); ok {
+		return nil, nil, ErrAlreadyLogin
 	}
-	return old, nil
+
+	old := m.sessions[userId]
+	if old != nil && old.version >= version {
+		return nil, nil, ErrLoginSuperseded
+	}
+	if conn.IsClosed() {
+		return nil, nil, ErrConnClosed
+	}
+	s := &Session{
+		userId:    userId,
+		conn:      conn,
+		sessionId: id,
+		version:   version,
+	}
+	s.MarkOnlineChecked()
+	sessionKey.Set(conn, s)
+	m.sessions[userId] = s
+	btlog.Ins().Info("sessionBind", "userId", userId, "sessionId", id, "version", version, "connId", conn.GetId())
+	return s, old, nil
 }
 
 func (m *Manager) Get(userId int64) (*Session, bool) {
@@ -46,7 +57,35 @@ func (m *Manager) Get(userId int64) (*Session, bool) {
 	return s, ok
 }
 
-func (m *Manager) Range(fn func(s *Session)) {
+func (m *Manager) IsCurrentSession(s *Session) bool {
+	if s == nil || s.conn.IsClosed() {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sessions[s.userId] == s
+}
+
+func (m *Manager) IsCurrent(ctx2 *btrouter.RequestContext) bool {
+	session, ok := GetSession(ctx2.Conn())
+	return ok && m.IsCurrentSession(session)
+}
+
+func (m *Manager) Drop(s *Session) {
+	if s == nil {
+		return
+	}
+	m.mu.Lock()
+	if m.sessions[s.userId] == s {
+		delete(m.sessions, s.userId)
+	}
+	if current, ok := GetSession(s.conn); ok && current == s {
+		sessionKey.Remove(s.conn)
+	}
+	m.mu.Unlock()
+}
+
+func (m *Manager) Range(fn func(*Session)) {
 	m.mu.RLock()
 	list := make([]*Session, 0, len(m.sessions))
 	for _, s := range m.sessions {
@@ -64,18 +103,14 @@ func (m *Manager) unbind(conn *btnet.Connection) {
 		return
 	}
 	m.mu.Lock()
-	// 只删自己，被顶号的旧连接断开时不能删掉新 session
 	if m.sessions[s.userId] == s {
 		delete(m.sessions, s.userId)
 	}
 	m.mu.Unlock()
-	btlog.Ins().Info("sessionUnbind", "userId", s.userId, "connId", conn.GetId())
-
+	btlog.Ins().Info("sessionUnbind", "userId", s.userId, "sessionId", s.sessionId, "connId", conn.GetId())
 	for _, fn := range m.unbindListeners {
 		fn(s)
 	}
 }
 
-func (m *Manager) OnUnbind(fn func(s *Session)) {
-	m.unbindListeners = append(m.unbindListeners, fn)
-}
+func (m *Manager) OnUnbind(fn func(*Session)) { m.unbindListeners = append(m.unbindListeners, fn) }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"gobattle/common/api"
+	"gobattle/common/redis/sessionstore"
 	"gobattle/framework/btconfig"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btnet"
@@ -17,20 +18,38 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
 	config.Load()
 	cfg := config.Gateway
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB,
+		DialTimeout: 2 * time.Second, ReadTimeout: 2 * time.Second, WriteTimeout: 2 * time.Second,
+	})
+	defer redisClient.Close()
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	err := redisClient.Ping(pingCtx).Err()
+	pingCancel()
+	if err != nil {
+		panic(err)
+	}
 
 	sessionMgr := btsession.NewManager()
 	router := btrouter.NewRouterHandler(btrouter.JSONCodec{})
+	pushService := service.NewPushService(router, sessionMgr)
+	kickService := service.NewKickService(pushService)
+	store := sessionstore.NewStore(redisClient, cfg.SessionTTL.Duration())
+	onlineService := service.NewOnlineService(redisClient, store, sessionMgr, kickService,
+		cfg.NodeId, cfg.SessionTTL.Duration(), cfg.ReconcileInterval.Duration())
+	sessionMgr.OnUnbind(onlineService.OnUnbind)
 	router.AddInterceptor(
 		btrouter.RateLimit(20, 40),
-		btrouter.Auth(btsession.IsLoggedIn),
+		btrouter.Auth(onlineService.IsActiveSession),
 		btrouter.SlowLog(50*time.Millisecond),
 	)
-	pushService := service.NewPushService(router, sessionMgr)
 
 	registry, err := btregistry.NewZkRegistry(cfg.Zk)
 	if err != nil {
@@ -50,13 +69,23 @@ func main() {
 	logicCluster := clusters.MustGet(api.GroupLogic, btrpc.RoundRobin())
 
 	router.RegisterModules(
-		module.NewLoginModule(api.NewUserApiClient(logicCluster), pushService, sessionMgr),
+		module.NewLoginModule(api.NewUserApiClient(logicCluster), sessionMgr, onlineService, kickService),
 		module.NewItemModule(api.NewItemApiClient(logicCluster)),
 		module.NewShopModule(api.NewShopApiClient(logicCluster)),
 		module.NewGmModule(api.NewGmApiClient(logicCluster)),
 	)
+	if err := onlineService.Start(); err != nil {
+		clusters.Close()
+		registry.Close()
+		panic(err)
+	}
 	gw := newGatewayServer(cfg.Server, router, sessionMgr)
 	if err := gw.Server.Start(); err != nil {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		onlineService.Stop(stopCtx)
+		cancel()
+		clusters.Close()
+		registry.Close()
 		panic(err)
 	}
 	btlog.Ins().Info("gatewayStarted", "nodeId", cfg.NodeId, "port", cfg.Server.TcpPort,
@@ -71,6 +100,7 @@ func main() {
 	defer cancel()
 
 	gw.Shutdown(ctx)
+	onlineService.Stop(ctx)
 	clusters.Close()
 	registry.Close()
 	btlog.Ins().Info("gatewayStopped", "nodeId", cfg.NodeId)

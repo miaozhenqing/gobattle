@@ -10,9 +10,11 @@ const (
 	CodeCommonLimitExceed  btrouter.Code = 10004 // 超过上限
 
 	// ==================== 登录 ====================
-	CodeInvalidUsername btrouter.Code = 10101 // username 为空、非法或过长
-	CodeAlreadyLogin    btrouter.Code = 10102 // 当前连接已登录
-	CodeNotLogin        btrouter.Code = 10103 // 当前连接未登录
+	CodeInvalidUsername  btrouter.Code = 10101 // username 为空、非法或过长
+	CodeAlreadyLogin     btrouter.Code = 10102 // 当前连接已登录
+	CodeNotLogin         btrouter.Code = 10103 // 当前连接未登录
+	CodeLoginUnavailable btrouter.Code = 10104
+	CodeLoginSuperseded  btrouter.Code = 10105
 
 	// ==================== DS ====================
 	CodeDsInvalidParam      btrouter.Code = 10201 // ds参数错误

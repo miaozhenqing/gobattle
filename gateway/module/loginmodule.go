@@ -11,13 +11,15 @@ import (
 )
 
 type LoginModule struct {
-	userApi     api.UserApi
-	pushService *service.PushService
-	sessionMgr  *btsession.Manager
+	userApi       api.UserApi
+	sessionMgr    *btsession.Manager
+	onlineService *service.OnlineService
+	kick          *service.KickService
 }
 
-func NewLoginModule(userApi api.UserApi, pushService *service.PushService, sessionMgr *btsession.Manager) *LoginModule {
-	return &LoginModule{userApi: userApi, pushService: pushService, sessionMgr: sessionMgr}
+func NewLoginModule(userApi api.UserApi, sessionMgr *btsession.Manager,
+	onlineService *service.OnlineService, kick *service.KickService) *LoginModule {
+	return &LoginModule{userApi: userApi, sessionMgr: sessionMgr, onlineService: onlineService, kick: kick}
 }
 
 func (m *LoginModule) RegisterRoutes(r *btrouter.RouterHandler) {
@@ -34,26 +36,36 @@ func (m *LoginModule) Login(ctx *btrouter.RequestContext, req *protocol.LoginReq
 	if err != nil {
 		return nil, err
 	}
-	old, err := m.sessionMgr.Bind(ctx.Conn(), res.UserId)
+	online, err := m.onlineService.SetOnline(ctx, res.UserId)
 	if err != nil {
-		return nil, protocol.CodeAlreadyLogin
+		return nil, protocol.CodeLoginUnavailable
 	}
-	// todo 只能顶掉本 gateway 上的旧连接
+	s, old, err := m.sessionMgr.Bind(ctx.Conn(), res.UserId, online.SessionId, online.Version)
+	if err != nil {
+		m.onlineService.RemoveOnline(online)
+		return nil, protocol.CodeLoginSuperseded
+	}
 	if old != nil {
-		m.kick(old)
+		m.kick.KickSession(old)
 	}
-	btlog.Ins().Info("login", "userId", res.UserId, "username", res.Username, "created", res.IsNew, "connId", ctx.Conn().GetId())
+	current, exists, err := m.onlineService.GetOnline(ctx, res.UserId)
+	if err != nil || !exists || current.GatewayId != online.GatewayId ||
+		current.SessionId != online.SessionId || current.Version != online.Version || ctx.Conn().IsClosed() {
+		m.sessionMgr.Drop(s)
+		m.onlineService.RemoveOnline(online)
+		if err != nil {
+			return nil, protocol.CodeLoginUnavailable
+		}
+		return nil, protocol.CodeLoginSuperseded
+	}
+	s.MarkOnlineChecked()
+	btlog.Ins().Info("login", "userId", res.UserId, "sessionId", s.SessionId(),
+		"version", s.Version(), "username", res.Username, "created", res.IsNew, "connId", ctx.Conn().GetId())
 	return res, nil
 }
 
-func (m *LoginModule) kick(old *btsession.Session) {
-	btlog.Ins().Info("kick", "userId", old.UserId(), "connId", old.Conn().GetId())
-	_ = m.pushService.PushSession(old, protocol.PushKick, &protocol.KickPush{})
-	old.Conn().FlushAndStop()
-}
-
 func (m *LoginModule) HeartBeat(requestContext *btrouter.RequestContext, req *protocol.HeartBeatReq) (*protocol.HeartBeatResp, error) {
-	if !btsession.IsLoggedIn(requestContext) {
+	if !m.onlineService.IsActiveSession(requestContext) {
 		return nil, protocol.CodeNotLogin
 	}
 	return &protocol.HeartBeatResp{UserId: req.UserId}, nil
