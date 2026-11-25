@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"gobattle/common/api"
+	commonredis "gobattle/common/redis"
 	"gobattle/common/redis/sessionstore"
 	"gobattle/framework/btconfig"
 	"gobattle/framework/btlog"
@@ -18,17 +19,12 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
 	config.Load()
 	cfg := config.Gateway
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB,
-		DialTimeout: 2 * time.Second, ReadTimeout: 2 * time.Second, WriteTimeout: 2 * time.Second,
-	})
+	redisClient := commonredis.NewClient(cfg.Redis)
 	defer redisClient.Close()
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	err := redisClient.Ping(pingCtx).Err()
@@ -42,7 +38,7 @@ func main() {
 	pushService := service.NewPushService(router, sessionMgr)
 	kickService := service.NewKickService(pushService)
 	store := sessionstore.NewStore(redisClient, cfg.SessionTTL.Duration())
-	onlineService := service.NewOnlineService(redisClient, store, sessionMgr, kickService,
+	onlineService := service.NewOnlineService(redisClient, store, sessionMgr, kickService, pushService,
 		cfg.NodeId, cfg.SessionTTL.Duration(), cfg.ReconcileInterval.Duration())
 	sessionMgr.OnUnbind(onlineService.OnUnbind)
 	router.AddInterceptor(

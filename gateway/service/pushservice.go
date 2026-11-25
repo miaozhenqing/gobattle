@@ -32,6 +32,10 @@ func (s *PushService) OnBackendPush(p *btrpc.Packet) {
 	_ = s.router.PushRaw(sess.Conn(), msgId, p.Payload)
 }
 
+func (s *PushService) PushRawSession(sess *btsession.Session, msgId uint32, payload []byte) error {
+	return s.router.PushRaw(sess.Conn(), msgId, payload)
+}
+
 func (s *PushService) PushSession(sess *btsession.Session, msgId uint32, v any) error {
 	return s.router.Push(sess.Conn(), msgId, v)
 }

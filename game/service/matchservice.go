@@ -232,10 +232,12 @@ func (s *MatchService) startBattle(group *matchGroup) {
 	log.Info("matchSuccess", "gameMode", battle.GameMode, "mapId", battle.MapId,
 		"dsAddr", net.JoinHostPort(ds.IP, strconv.Itoa(ds.Port)), "playerIds", playerIdsOf(battle.Players),
 		"waitMs", time.Since(group.players[0].joinTime).Milliseconds())
+	userIds := make([]int64, 0, len(group.players))
 	for _, p := range group.players {
-		if err := s.pushService.PushUser(p.userId, protocol.PushMatchSuccess, push); err != nil {
-			log.Warn("pushMatchSuccessError", "userId", p.userId, "err", err)
-		}
+		userIds = append(userIds, p.userId)
+	}
+	if err := s.pushService.PushUsers(userIds, protocol.PushMatchSuccess, push); err != nil {
+		log.Warn("pushMatchSuccessError", "err", err)
 	}
 }
 
@@ -244,10 +246,12 @@ func (s *MatchService) pushMatchFail(group *matchGroup, err error) {
 	code := protocol.CodeMatchNoDs
 	errors.As(err, &code)
 	push := &protocol.MatchFailPush{Code: uint32(code)}
+	userIds := make([]int64, 0, len(group.players))
 	for _, p := range group.players {
-		if err := s.pushService.PushUser(p.userId, protocol.PushMatchFail, push); err != nil {
-			btlog.Ins().Warn("pushMatchFailError", "userId", p.userId, "err", err)
-		}
+		userIds = append(userIds, p.userId)
+	}
+	if err := s.pushService.PushUsers(userIds, protocol.PushMatchFail, push); err != nil {
+		btlog.Ins().Warn("pushMatchFailError", "err", err)
 	}
 }
 

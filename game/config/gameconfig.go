@@ -4,6 +4,7 @@ import (
 	_ "encoding/json"
 	"flag"
 	"fmt"
+	commonredis "gobattle/common/redis"
 	"gobattle/framework/btconfig"
 	_ "os"
 	"strconv"
@@ -23,6 +24,7 @@ type GameConfig struct {
 	DsEnable         bool                  `json:"dsEnable"`
 	DsServer         btconfig.ServerConfig `json:"dsServer"`
 	Zk               btconfig.ZkConfig     `json:"zk"`
+	Redis            commonredis.Config    `json:"redis"`
 	DB               DBConfig              `json:"db"`
 }
 
@@ -66,6 +68,9 @@ func Load() {
 	}
 	if cfg.NodeId <= 0 || cfg.Role == "" {
 		panic("nodeId and role are required")
+	}
+	if cfg.Role == "logic" && cfg.Redis.Addr == "" {
+		panic("redis addr is required")
 	}
 	Game = cfg
 }

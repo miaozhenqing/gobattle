@@ -236,10 +236,12 @@ func (s *BattleService) onDsUnregister(ds *Ds) {
 
 func (s *BattleService) pushBattleEnd(battle *Battle, reason int) {
 	push := &protocol.BattleEndPush{BattleId: battle.Id, Reason: reason}
+	userIds := make([]int64, 0, len(battle.Players))
 	for _, p := range battle.Players {
-		if err := s.pushService.PushUser(p.UserId, protocol.PushBattleEnd, push); err != nil && !errors.Is(err, errUserOffline) {
-			btlog.Ins().Warn("pushBattleEndError", "battleId", battle.Id, "userId", p.UserId, "err", err)
-		}
+		userIds = append(userIds, p.UserId)
+	}
+	if err := s.pushService.PushUsers(userIds, protocol.PushBattleEnd, push); err != nil && !errors.Is(err, errUserOffline) {
+		btlog.Ins().Warn("pushBattleEndError", "battleId", battle.Id, "err", err)
 	}
 }
 

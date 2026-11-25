@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"gobattle/common/api"
+	"gobattle/common/redis"
+	"gobattle/common/redis/sessionstore"
 	"gobattle/framework/btconfig"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btnet"
@@ -25,8 +27,17 @@ func setupLogic(a *app) {
 	})
 
 	queryTimeout := cfg.DB.QueryTimeout.Duration()
+	redisClient := redis.NewClient(cfg.Redis)
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	if err := redisClient.Ping(pingCtx).Err(); err != nil {
+		pingCancel()
+		redisClient.Close()
+		panic(err)
+	}
+	pingCancel()
+	a.onStop(func(ctx context.Context) { redisClient.Close() })
 	dsRouter := btrouter.NewRouterHandler(btrouter.JSONCodec{})
-	pushService := service.NewPushService(a.rpcServer, dsRouter)
+	pushService := service.NewPushService(dsRouter, sessionstore.NewOnlineReader(redisClient))
 	userService := service.NewUserService(db, a.idNode, queryTimeout)
 	itemService := service.NewItemService(db, pushService, a.idNode, queryTimeout, a.tplMgr)
 	shopService := service.NewShopService(db, a.tplMgr, itemService, a.idNode, queryTimeout)

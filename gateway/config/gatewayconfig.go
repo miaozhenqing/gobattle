@@ -3,23 +3,18 @@ package config
 import (
 	"flag"
 	"fmt"
+	commonredis "gobattle/common/redis"
 	"gobattle/framework/btconfig"
 	"time"
 )
 
 var Gateway *GatewayConfig
 
-type RedisConfig struct {
-	Addr     string `json:"addr"`
-	Password string `json:"password"`
-	DB       int    `json:"db"`
-}
-
 type GatewayConfig struct {
 	NodeId            int64                 `json:"nodeId"`
 	Server            btconfig.ServerConfig `json:"server"`
 	Zk                btconfig.ZkConfig     `json:"zk"`
-	Redis             RedisConfig           `json:"redis"`
+	Redis             commonredis.Config    `json:"redis"`
 	SessionTTL        btconfig.Duration     `json:"sessionTTL"`
 	ReconcileInterval btconfig.Duration     `json:"reconcileInterval"`
 	CallTimeout       btconfig.Duration     `json:"callTimeout"`

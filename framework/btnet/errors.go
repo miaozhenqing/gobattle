@@ -12,7 +12,7 @@ var (
 )
 
 type PanicError struct {
-	Value interface{}
+	Value any
 	Stack []byte
 }
 

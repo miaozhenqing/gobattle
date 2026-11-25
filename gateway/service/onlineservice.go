@@ -23,6 +23,7 @@ type OnlineService struct {
 	sessionStore *sessionstore.Store
 	mgr          *btsession.Manager
 	kickService  *KickService
+	pushService  *PushService
 	gatewayId    int64
 	ttl          time.Duration
 	interval     time.Duration
@@ -32,11 +33,11 @@ type OnlineService struct {
 }
 
 func NewOnlineService(client *redis.Client, store *sessionstore.Store, mgr *btsession.Manager,
-	kick *KickService, gatewayId int64, ttl, interval time.Duration) *OnlineService {
+	kick *KickService, push *PushService, gatewayId int64, ttl, interval time.Duration) *OnlineService {
 	if interval <= 0 || ttl <= 2*interval {
 		panic("session ttl must exceed twice reconcile interval")
 	}
-	return &OnlineService{client: client, sessionStore: store, mgr: mgr, kickService: kick,
+	return &OnlineService{client: client, sessionStore: store, mgr: mgr, kickService: kick, pushService: push,
 		gatewayId: gatewayId, ttl: ttl, interval: interval, cleanup: make(chan sessionstore.OnlineInfo, 2048)}
 }
 
@@ -101,9 +102,12 @@ func (p *OnlineService) OnUnbind(s *btsession.Session) {
 
 func (p *OnlineService) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
-	sub := p.client.Subscribe(ctx, sessionstore.KickChannel(p.gatewayId))
+	sub := p.client.Subscribe(ctx, sessionstore.KickChannel(p.gatewayId), sessionstore.PushChannel(p.gatewayId))
 	readyCtx, done := context.WithTimeout(ctx, redisTimeout)
 	_, err := sub.Receive(readyCtx)
+	if err == nil {
+		_, err = sub.Receive(readyCtx)
+	}
 	done()
 	if err != nil {
 		_ = sub.Close()
@@ -112,17 +116,20 @@ func (p *OnlineService) Start() error {
 	}
 	p.cancel = cancel
 	p.wg.Add(3)
-	go p.handleKickNotices(ctx, sub)
+	go p.handleNotices(ctx, sub)
 	go p.checkOnlineSessionsPeriodically(ctx)
 	go p.deleteDisconnectedSessions(ctx)
 	return nil
 }
 
-func (p *OnlineService) handleKickNotices(ctx context.Context, sub *redis.PubSub) {
+func (p *OnlineService) handleNotices(ctx context.Context, sub *redis.PubSub) {
 	defer p.wg.Done()
 	defer func() { _ = sub.Close() }()
 	for ctx.Err() == nil {
+		currentSub := sub
+		stopClose := context.AfterFunc(ctx, func() { _ = currentSub.Close() })
 		msg, err := sub.ReceiveMessage(ctx)
+		stopClose()
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -137,9 +144,12 @@ func (p *OnlineService) handleKickNotices(ctx context.Context, sub *redis.PubSub
 					return
 				case <-timer.C:
 				}
-				next := p.client.Subscribe(ctx, sessionstore.KickChannel(p.gatewayId))
+				next := p.client.Subscribe(ctx, sessionstore.KickChannel(p.gatewayId), sessionstore.PushChannel(p.gatewayId))
 				readyCtx, done := context.WithTimeout(ctx, redisTimeout)
 				_, readyErr := next.Receive(readyCtx)
+				if readyErr == nil {
+					_, readyErr = next.Receive(readyCtx)
+				}
 				done()
 				if readyErr == nil {
 					sub = next
@@ -147,6 +157,10 @@ func (p *OnlineService) handleKickNotices(ctx context.Context, sub *redis.PubSub
 				}
 				_ = next.Close()
 			}
+			continue
+		}
+		if msg.Channel == sessionstore.PushChannel(p.gatewayId) {
+			p.handlePushNotice(msg.Payload)
 			continue
 		}
 		var notice sessionstore.KickNotice
@@ -162,6 +176,24 @@ func (p *OnlineService) handleKickNotices(ctx context.Context, sub *redis.PubSub
 		s, ok := p.mgr.Get(userId)
 		if ok && s.SessionId() == notice.SessionId && s.Version() == version && p.mgr.IsCurrentSession(s) {
 			p.kickService.KickSession(s)
+		}
+	}
+}
+
+func (p *OnlineService) handlePushNotice(payload string) {
+	var notices []sessionstore.PushNotice
+	if err := json.Unmarshal([]byte(payload), &notices); err != nil {
+		btlog.Ins().Warn("pushNoticeInvalid", "err", err)
+		return
+	}
+	for _, notice := range notices {
+		s, ok := p.mgr.Get(notice.UserId)
+		if !ok || s.SessionId() != notice.SessionId || s.Version() != notice.Version ||
+			!p.mgr.IsCurrentSession(s) || !s.OnlineCheckedWithin(p.ttl-p.interval) {
+			continue
+		}
+		if err := p.pushService.PushRawSession(s, notice.MsgId, notice.Payload); err != nil {
+			btlog.Ins().Warn("pushWriteFail", "userId", notice.UserId, "msgId", notice.MsgId, "err", err)
 		}
 	}
 }

@@ -25,21 +25,46 @@ type KickNotice struct {
 	Version   string `json:"version"`
 }
 
+type PushNotice struct {
+	UserId    int64  `json:"userId"`
+	SessionId string `json:"sessionId"`
+	Version   int64  `json:"version"`
+	MsgId     uint32 `json:"msgId"`
+	Payload   []byte `json:"payload"`
+}
+
+type PushTarget struct {
+	UserId  int64
+	MsgId   uint32
+	Payload []byte
+}
+
 type SetOnlineResult struct {
 	NewSession OnlineInfo
 	OldSession OnlineInfo
 }
 
-type Store struct {
+type OnlineReader struct {
 	client *redis.Client
-	ttl    time.Duration
+}
+
+type Store struct {
+	*OnlineReader
+	ttl time.Duration
+}
+
+func NewOnlineReader(client *redis.Client) *OnlineReader {
+	if client == nil {
+		panic("invalid online reader config")
+	}
+	return &OnlineReader{client: client}
 }
 
 func NewStore(client *redis.Client, ttl time.Duration) *Store {
 	if client == nil || ttl <= 0 {
 		panic("invalid session store config")
 	}
-	return &Store{client: client, ttl: ttl}
+	return &Store{OnlineReader: NewOnlineReader(client), ttl: ttl}
 }
 
 const setOnlineScript = `
@@ -88,6 +113,10 @@ func VersionKey(userId int64) string {
 
 func KickChannel(gatewayId int64) string {
 	return fmt.Sprintf("gw:kick:%d", gatewayId)
+}
+
+func PushChannel(gatewayId int64) string {
+	return fmt.Sprintf("gw:push:%d", gatewayId)
 }
 
 func (s *Store) SetOnline(ctx context.Context, userId, gatewayId int64, sessionId string) (SetOnlineResult, error) {
@@ -143,11 +172,7 @@ func (s *Store) PublishKickNotice(ctx context.Context, oldSession OnlineInfo) er
 	return s.client.Publish(ctx, KickChannel(oldSession.GatewayId), payload).Err()
 }
 
-func (s *Store) GetOnline(ctx context.Context, userId int64) (OnlineInfo, bool, error) {
-	values, err := s.client.HGetAll(ctx, OnlineKey(userId)).Result()
-	if err != nil {
-		return OnlineInfo{}, false, err
-	}
+func parseOnlineInfo(userId int64, values map[string]string) (OnlineInfo, bool, error) {
 	if len(values) == 0 {
 		return OnlineInfo{}, false, nil
 	}
@@ -159,15 +184,128 @@ func (s *Store) GetOnline(ctx context.Context, userId int64) (OnlineInfo, bool, 
 	if err != nil {
 		return OnlineInfo{}, false, err
 	}
-	if values["sessionId"] == "" {
-		return OnlineInfo{}, false, fmt.Errorf("missing sessionId for user %d", userId)
+	if values["sessionId"] == "" || gatewayId <= 0 || version <= 0 {
+		return OnlineInfo{}, false, fmt.Errorf("invalid online info for user %d", userId)
 	}
-	return OnlineInfo{
-		UserId:    userId,
-		GatewayId: gatewayId,
-		SessionId: values["sessionId"],
-		Version:   version,
-	}, true, nil
+	return OnlineInfo{UserId: userId, GatewayId: gatewayId, SessionId: values["sessionId"], Version: version}, true, nil
+}
+
+func (s *OnlineReader) GetOnline(ctx context.Context, userId int64) (OnlineInfo, bool, error) {
+	values, err := s.client.HGetAll(ctx, OnlineKey(userId)).Result()
+	if err != nil {
+		return OnlineInfo{}, false, err
+	}
+	return parseOnlineInfo(userId, values)
+}
+
+func (s *OnlineReader) GetOnlineBatch(ctx context.Context, userIds []int64) (map[int64]OnlineInfo, error) {
+	result := make(map[int64]OnlineInfo, len(userIds))
+	uniqueUserIds := make([]int64, 0, len(userIds))
+	seen := make(map[int64]struct{}, len(userIds))
+	for _, userId := range userIds {
+		if userId <= 0 {
+			return nil, fmt.Errorf("invalid userId %d", userId)
+		}
+		if _, ok := seen[userId]; ok {
+			continue
+		}
+		seen[userId] = struct{}{}
+		uniqueUserIds = append(uniqueUserIds, userId)
+	}
+	if len(uniqueUserIds) == 0 {
+		return result, nil
+	}
+	pipe := s.client.Pipeline()
+	commands := make([]*redis.MapStringStringCmd, len(uniqueUserIds))
+	for i, userId := range uniqueUserIds {
+		commands[i] = pipe.HGetAll(ctx, OnlineKey(userId))
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, err
+	}
+	for i, cmd := range commands {
+		info, exists, err := parseOnlineInfo(uniqueUserIds[i], cmd.Val())
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			result[uniqueUserIds[i]] = info
+		}
+	}
+	return result, nil
+}
+
+func (s *OnlineReader) PublishPushBatch(ctx context.Context, targets []PushTarget) (int, error) {
+	for _, target := range targets {
+		if target.UserId <= 0 {
+			return 0, fmt.Errorf("invalid push userId %d", target.UserId)
+		}
+	}
+	count := 0
+	for start := 0; start < len(targets); start += 300 {
+		end := min(start+300, len(targets))
+		n, err := s.publishPushBatch(ctx, targets[start:end])
+		count += n
+		if err != nil {
+			return count, err
+		}
+	}
+	return count, nil
+}
+
+func (s *OnlineReader) publishPushBatch(ctx context.Context, targets []PushTarget) (int, error) {
+	if len(targets) == 0 {
+		return 0, nil
+	}
+	userIds := make([]int64, 0, len(targets))
+	seen := make(map[int64]struct{}, len(targets))
+	for _, target := range targets {
+		if target.UserId <= 0 {
+			return 0, fmt.Errorf("invalid push userId %d", target.UserId)
+		}
+		if _, ok := seen[target.UserId]; !ok {
+			seen[target.UserId] = struct{}{}
+			userIds = append(userIds, target.UserId)
+		}
+	}
+	onlineByUser, err := s.GetOnlineBatch(ctx, userIds)
+	if err != nil {
+		return 0, err
+	}
+	noticesByGateway := make(map[int64][]PushNotice)
+	onlineCount := 0
+	for _, target := range targets {
+		online, ok := onlineByUser[target.UserId]
+		if !ok {
+			continue
+		}
+		onlineCount++
+		noticesByGateway[online.GatewayId] = append(noticesByGateway[online.GatewayId], PushNotice{
+			UserId: target.UserId, SessionId: online.SessionId, Version: online.Version,
+			MsgId: target.MsgId, Payload: target.Payload,
+		})
+	}
+	if len(noticesByGateway) == 0 {
+		return 0, nil
+	}
+	pipe := s.client.Pipeline()
+	publishesByGateway := make(map[int64]*redis.IntCmd, len(noticesByGateway))
+	for gatewayId, notices := range noticesByGateway {
+		payload, err := json.Marshal(notices)
+		if err != nil {
+			return 0, err
+		}
+		publishesByGateway[gatewayId] = pipe.Publish(ctx, PushChannel(gatewayId), payload)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return 0, err
+	}
+	for gatewayId, cmd := range publishesByGateway {
+		if cmd.Val() == 0 {
+			return onlineCount, fmt.Errorf("gateway %d has no push subscriber", gatewayId)
+		}
+	}
+	return onlineCount, nil
 }
 
 func (s *Store) RenewOnlineBatch(ctx context.Context, records []OnlineInfo) ([]bool, error) {

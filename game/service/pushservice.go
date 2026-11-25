@@ -1,10 +1,13 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"gobattle/common/redis/sessionstore"
 	"gobattle/framework/btlog"
 	"gobattle/framework/btrouter"
-	"gobattle/framework/btrpc"
+	"time"
 )
 
 var (
@@ -14,24 +17,48 @@ var (
 
 // 统一推送出口
 type PushService struct {
-	rpcServer       *btrpc.Server
 	dsRouterHandler *btrouter.RouterHandler
+	onlineReader    *sessionstore.OnlineReader
 }
 
-func NewPushService(rpcServer *btrpc.Server, dsRouterHandler *btrouter.RouterHandler) *PushService {
-	return &PushService{
-		rpcServer:       rpcServer,
-		dsRouterHandler: dsRouterHandler,
-	}
+func NewPushService(dsRouterHandler *btrouter.RouterHandler, onlineReader *sessionstore.OnlineReader) *PushService {
+	return &PushService{dsRouterHandler: dsRouterHandler, onlineReader: onlineReader}
 }
 
-// todo 当前方案：广播给所有 gateway，由 gateway 按 userId 过滤（UserId=0 在 gateway 侧表示全服广播，这里必须拦截）
 func (s *PushService) PushUser(userId int64, msgId uint32, v any) error {
-	if userId <= 0 {
-		btlog.Ins().Error("pushInvalidUserId", "userId", userId, "msgId", msgId)
-		return errInvalidUserId
+	return s.PushUsers([]int64{userId}, msgId, v)
+}
+
+func (s *PushService) PushUsers(userIds []int64, msgId uint32, v any) error {
+	if len(userIds) == 0 {
+		return nil
 	}
-	return s.rpcServer.Broadcast("gateway", userId, msgId, v)
+	for _, userId := range userIds {
+		if userId <= 0 {
+			btlog.Ins().Error("pushInvalidUserId", "userId", userId, "msgId", msgId)
+			return errInvalidUserId
+		}
+	}
+	payload, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	targets := make([]sessionstore.PushTarget, 0, len(userIds))
+	seen := make(map[int64]struct{}, len(userIds))
+	for _, userId := range userIds {
+		if _, ok := seen[userId]; ok {
+			continue
+		}
+		seen[userId] = struct{}{}
+		targets = append(targets, sessionstore.PushTarget{UserId: userId, MsgId: msgId, Payload: payload})
+	}
+	count, err := s.onlineReader.PublishPushBatch(ctx, targets)
+	if err == nil && count == 0 {
+		return errUserOffline
+	}
+	return err
 }
 
 func (s *PushService) PushDs(ds *Ds, msgId uint32, v any) error {
